@@ -1,0 +1,6 @@
+{
+  "name": "AniFlux",
+  "description": "تطبيق شبكة AniFlux لمشاهدة وتتبع أحدث مسلسلات وأفلام الأنمي ومعرفة جدول الحلقات والمفضلة",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
