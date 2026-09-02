@@ -48,7 +48,7 @@ fun VideoPlayerModal(
     var currentProgressSeconds by remember { mutableFloatStateOf(0f) }
     var skipUsed by remember(currentEpisode) { mutableStateOf(false) } // 2 mins in
     val totalSeconds = (currentEpisode.durationMinutes * 60).toFloat()
-    var selectedServer by remember { mutableStateOf(currentEpisode.servers.firstOrNull()) }
+    var selectedServer by remember(currentEpisode) { mutableStateOf(currentEpisode.servers.firstOrNull()) }
     var showServerSelector by remember { mutableStateOf(false) }
     var selectedSpeed by remember { mutableFloatStateOf(1.0f) }
 

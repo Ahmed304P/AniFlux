@@ -86,6 +86,9 @@ fun AniFluxAppShell(
     val filteredAnimeList by viewModel.filteredAnimeList.collectAsStateWithLifecycle()
     val filterState by viewModel.filterState.collectAsStateWithLifecycle()
                 val isGridMode by viewModel.isGridMode.collectAsStateWithLifecycle()
+    val overlayStack by viewModel.overlayStack.collectAsStateWithLifecycle()
+    val isSearchOverlayVisible = overlayStack.any { it is com.example.ui.viewmodel.AnimeViewModel.OverlayState.Search }
+    
     val selectedAnimeDetails by viewModel.selectedAnimeForDetails.collectAsStateWithLifecycle()
     val activePlayerPair by viewModel.activePlayerEpisode.collectAsStateWithLifecycle()
     val savedEntities by viewModel.savedAnimeEntities.collectAsStateWithLifecycle()
@@ -98,7 +101,6 @@ fun AniFluxAppShell(
     val currentTheme by viewModel.currentTheme.collectAsStateWithLifecycle()
     val skipTime by viewModel.skipTime.collectAsStateWithLifecycle()
 
-    var isSearchOverlayVisible by remember { mutableStateOf(false) }
 
     val tabHistorySize by viewModel.tabHistorySize.collectAsStateWithLifecycle()
     val shouldOpenNotifications by socialViewModel.shouldOpenNotifications.collectAsStateWithLifecycle()
@@ -108,11 +110,8 @@ fun AniFluxAppShell(
     BackHandler(enabled = true) {
         if (activePlayerPair != null) {
             viewModel.closePlayer()
-        } else if (selectedAnimeDetails != null) {
-            viewModel.closeAnimeDetails()
-        } else if (isSearchOverlayVisible) {
-            isSearchOverlayVisible = false
-            viewModel.updateSearchQuery("")
+        } else if (viewModel.popOverlay()) {
+            // overlay stack handled the back press
         } else if (drawerState.isOpen) {
             scope.launch { drawerState.close() }
         } else if (tabHistorySize > 0) {
@@ -180,7 +179,7 @@ fun AniFluxAppShell(
                         allAnime = allAnime,
                         isLoading = isLoading,
                         onOpenMenu = { scope.launch { drawerState.open() } },
-                        onOpenSearch = { isSearchOverlayVisible = true },
+                        onOpenSearch = { viewModel.openSearch() },
                         onOpenAnimeDetails = { viewModel.openAnimeDetails(it) },
                         isGridMode = isGridMode,
                         onToggleGridMode = { viewModel.toggleGridMode() }
@@ -195,12 +194,11 @@ fun AniFluxAppShell(
                         onTypeFilterChange = { viewModel.updateTypeFilter(it) },
                         onResetFilters = { viewModel.resetFilters() },
                         onOpenAnimeDetails = { 
-                        isSearchOverlayVisible = false
                         viewModel.updateSearchQuery("")
                         viewModel.openAnimeDetails(it)
                     },
                         onOpenMenu = { scope.launch { drawerState.open() } },
-                        onOpenSearch = { isSearchOverlayVisible = true },
+                        onOpenSearch = { viewModel.openSearch() },
                         title = "لائحة الانمي",
                         isGridMode = isGridMode,
                         onToggleGridMode = { viewModel.toggleGridMode() }
@@ -211,7 +209,6 @@ fun AniFluxAppShell(
                         scheduledAnimeList = scheduledAnimeList,
                         onSelectDay = { viewModel.setScheduleDay(it) },
                         onOpenAnimeDetails = { 
-                        isSearchOverlayVisible = false
                         viewModel.updateSearchQuery("")
                         viewModel.openAnimeDetails(it)
                     },
@@ -227,7 +224,6 @@ fun AniFluxAppShell(
                             onSelectCategory = { viewModel.setLibraryCategory(it) },
                             onRemoveSaved = { viewModel.removeSavedAnime(it) },
                             onOpenAnimeDetails = { 
-                        isSearchOverlayVisible = false
                         viewModel.updateSearchQuery("")
                         viewModel.openAnimeDetails(it)
                     },
@@ -240,7 +236,7 @@ fun AniFluxAppShell(
                             savedEntities = savedEntities,
                             allAnimeList = allAnime,
                             onOpenMenu = { scope.launch { drawerState.open() } },
-                            onOpenSearch = { isSearchOverlayVisible = true },
+                            onOpenSearch = { viewModel.openSearch() },
                             onOpenAnimeDetails = { viewModel.openAnimeDetails(it) }
                         )
                     }
@@ -256,7 +252,7 @@ fun AniFluxAppShell(
                                 com.example.ui.screens.CustomListsScreen(
                                     customLists = customLists,
                                     onOpenMenu = { scope.launch { drawerState.open() } },
-                                    onOpenSearch = { isSearchOverlayVisible = true },
+                                    onOpenSearch = { viewModel.openSearch() },
                                     onCreateListClick = { customListScreenState = "CREATE" },
                                     onListClick = { list -> 
                                         selectedList = list
@@ -283,7 +279,6 @@ fun AniFluxAppShell(
                                         onBack = { customListScreenState = "MAIN" },
                                         onAddAnimeClick = { customListScreenState = "ADD" },
                                         onOpenAnimeDetails = { 
-                        isSearchOverlayVisible = false
                         viewModel.updateSearchQuery("")
                         viewModel.openAnimeDetails(it)
                     },
@@ -316,9 +311,8 @@ fun AniFluxAppShell(
                             savedEntities = savedEntities,
                             allAnimeList = allAnime,
                             onOpenMenu = { scope.launch { drawerState.open() } },
-                            onOpenSearch = { isSearchOverlayVisible = true },
+                            onOpenSearch = { viewModel.openSearch() },
                             onOpenAnimeDetails = { 
-                        isSearchOverlayVisible = false
                         viewModel.updateSearchQuery("")
                         viewModel.openAnimeDetails(it)
                     },
@@ -331,9 +325,8 @@ fun AniFluxAppShell(
                             watchHistoryList = watchHistoryList,
                             allAnimeList = allAnime,
                             onOpenMenu = { scope.launch { drawerState.open() } },
-                            onOpenSearch = { isSearchOverlayVisible = true },
+                            onOpenSearch = { viewModel.openSearch() },
                             onOpenAnimeDetails = { 
-                        isSearchOverlayVisible = false
                         viewModel.updateSearchQuery("")
                         viewModel.openAnimeDetails(it)
                     },
@@ -346,7 +339,7 @@ fun AniFluxAppShell(
                     5 -> SeasonsScreen(
                         animeList = filteredAnimeList,
                         onOpenMenu = { scope.launch { drawerState.open() } },
-                        onOpenSearch = { isSearchOverlayVisible = true },
+                        onOpenSearch = { viewModel.openSearch() },
                         onOpenAnimeDetails = { viewModel.openAnimeDetails(it) },
                         isGridMode = isGridMode
                     )
@@ -411,7 +404,7 @@ fun AniFluxAppShell(
                     visible = isSearchOverlayVisible,
                     isDetailScreenOpen = selectedAnimeDetails != null,
                     onClose = { 
-                        isSearchOverlayVisible = false
+                        viewModel.popOverlay()
                         viewModel.updateSearchQuery("")
                     },
                     searchQuery = filterState.query,
@@ -471,18 +464,22 @@ fun AniFluxAppShell(
                         val episodes = remember(anime) { viewModel.getEpisodesForAnime(anime) }
                         val isSaved by viewModel.isAnimeSaved(anime.id).collectAsStateWithLifecycle(initialValue = false)
                         val savedStatus by viewModel.getAnimeSavedStatus(anime.id).collectAsStateWithLifecycle(initialValue = null)
+                        val userRating by viewModel.getUserRating(anime.id).collectAsStateWithLifecycle(initialValue = null)
                         val watchedEpisodes by viewModel.getWatchedEpisodes(anime.id).collectAsStateWithLifecycle(initialValue = emptySet())
                         AnimeDetailScreen(
                             anime = anime,
                             episodes = episodes,
                             isSaved = isSaved,
                             savedStatus = savedStatus,
+                            userRating = userRating,
                             watchedEpisodes = watchedEpisodes,
                             onToggleWatched = { epNum, watched -> viewModel.toggleEpisodeWatched(anime.id, epNum, watched) },
                             onRateAnime = { rating -> viewModel.rateAnime(anime.id, rating) },
                             onBack = { viewModel.closeAnimeDetails() },
                             onToggleSave = { status -> viewModel.toggleSaveAnime(anime.id, status) },
                             onRemoveSaved = { animeId -> viewModel.removeSavedAnime(animeId) },
+                            onGenreClick = { genre -> viewModel.openSearchWithGenre(genre) },
+                            onStudioClick = { studio -> viewModel.openSearchWithStudio(studio) },
                             onOpenPlayer = { ep ->
                                 viewModel.loadCommentsForEpisode(anime.id, ep.episodeNumber)
                                 viewModel.openPlayer(anime, ep)

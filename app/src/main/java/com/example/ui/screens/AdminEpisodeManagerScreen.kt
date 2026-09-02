@@ -1,33 +1,33 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,12 +49,14 @@ fun AdminEpisodeManagerScreen(
     
     var isSaving by remember { mutableStateOf(false) }
 
-    // Manual Form State
-    var isManualFormVisible by remember { mutableStateOf(false) }
-    var manualEpNum by remember { mutableStateOf("") }
-    var manualEpLink by remember { mutableStateOf("") }
+    // Dialog State for Manual Add / Edit
+    var showEpisodeDialog by remember { mutableStateOf(false) }
+    var dialogEpisodeNum by remember { mutableStateOf("") }
+    var dialogEpisodeLink by remember { mutableStateOf("") }
+    var isEditingExisting by remember { mutableStateOf(false) }
 
-    val handleSaveGlobally = {
+    // Save changes globally
+    val saveChangesGlobally = {
         if (anime != null) {
             scope.launch {
                 isSaving = true
@@ -70,36 +72,55 @@ fun AdminEpisodeManagerScreen(
                 viewModel.saveAnime(updatedAnime)
                 currentEpisodesInput = finalEpisodesCount.toString()
                 
-                delay(500)
+                delay(400)
                 isSaving = false
-                snackbarHostState.showSnackbar("تم حفظ التعديلات وتحديث الحلقات في التطبيق بالكامل!")
+                snackbarHostState.showSnackbar("تم الحفظ بنجاح وتحديث الحلقات في التطبيق!")
             }
         }
     }
+
+    // Prepare Sorted Episode List (Ascending 1, 2, 3, 4, 5...)
+    val baseCount = currentEpisodesInput.toIntOrNull() ?: 0
+    val customKeys = customEpisodesState.keys.mapNotNull { it.toIntOrNull() }
+    val allNumbersSet = (if (baseCount > 0) (1..baseCount).toSet() else emptySet()) + customKeys
+    val sortedEpisodeNumbers = allNumbersSet.sorted()
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                windowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp),
-                title = { Text("إدارة الحلقات", color = Color.White, fontWeight = FontWeight.Bold) },
+                windowInsets = WindowInsets(0.dp),
+                title = { 
+                    Column {
+                        Text("إدارة الحلقات", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        anime?.let {
+                            Text(it.titleAr.ifBlank { it.titleEn }, color = Color.Gray, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "رجوع", tint = Color.White)
                     }
                 },
                 actions = {
-                    IconButton(onClick = handleSaveGlobally) {
+                    Button(
+                        onClick = { saveChangesGlobally() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
                         if (isSaving) {
-                            CircularProgressIndicator(color = Color.Green, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Default.Check, contentDescription = "حفظ", tint = Color.Green)
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("حفظ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF1A1A1A)
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF16191F))
             )
         },
         containerColor = Color(0xFF0F1115)
@@ -108,32 +129,44 @@ fun AdminEpisodeManagerScreen(
             modifier = modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Auto Engine Section
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF16191F)),
                     shape = RoundedCornerShape(20.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
+                    Column(modifier = Modifier.padding(20.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color(0xFFE91E63))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("المحرك الذكي (Auto Engine)", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(Color(0xFFE91E63).copy(alpha = 0.15f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color(0xFFE91E63), modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("المحرك الذكي (Auto Engine)", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("توليد روابط الحلقات تلقائياً عبر كود السيرفر", color = Color.Gray, fontSize = 12.sp)
+                            }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             OutlinedTextField(
                                 value = serverIdInput,
                                 onValueChange = { serverIdInput = it },
-                                label = { Text("كود السيرفر", color = Color.Gray) },
+                                label = { Text("كود السيرفر", color = Color.Gray, fontSize = 13.sp) },
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color(0xFFE91E63),
-                                    unfocusedBorderColor = Color.DarkGray,
+                                    unfocusedBorderColor = Color(0xFF2C323E),
                                     focusedTextColor = Color.White,
                                     unfocusedTextColor = Color.White,
                                     cursorColor = Color(0xFFE91E63)
@@ -146,11 +179,11 @@ fun AdminEpisodeManagerScreen(
                             OutlinedTextField(
                                 value = currentEpisodesInput,
                                 onValueChange = { currentEpisodesInput = it },
-                                label = { Text("عدد الحلقات", color = Color.Gray) },
+                                label = { Text("عدد الحلقات", color = Color.Gray, fontSize = 13.sp) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color(0xFFE91E63),
-                                    unfocusedBorderColor = Color.DarkGray,
+                                    unfocusedBorderColor = Color(0xFF2C323E),
                                     focusedTextColor = Color.White,
                                     unfocusedTextColor = Color.White,
                                     cursorColor = Color(0xFFE91E63)
@@ -161,145 +194,85 @@ fun AdminEpisodeManagerScreen(
                             )
                         }
                         
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
                         Button(
-                            onClick = handleSaveGlobally,
+                            onClick = { saveChangesGlobally() },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp),
+                                .height(46.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63)),
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("توليد وحفظ الحلقات", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("تفعيل وتشغيل الحلقات", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
                 }
             }
 
+            // Header for Episodes List + Manual Add Button
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("قائمة الحلقات", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Column {
+                        Text("قائمة الحلقات", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("${sortedEpisodeNumbers.size} حلقة مسجلة", color = Color.Gray, fontSize = 12.sp)
+                    }
 
+                    // Manual Add Button - Opens Popup Dialog
                     Button(
                         onClick = {
-                            isManualFormVisible = !isManualFormVisible
-                            if (isManualFormVisible) {
-                                val nextEp = (currentEpisodesInput.toIntOrNull() ?: 0) + 1
-                                manualEpNum = nextEp.toString()
-                                manualEpLink = ""
-                            }
+                            isEditingExisting = false
+                            val nextNum = if (sortedEpisodeNumbers.isEmpty()) 1 else (sortedEpisodeNumbers.maxOrNull() ?: 0) + 1
+                            dialogEpisodeNum = nextNum.toString()
+                            dialogEpisodeLink = ""
+                            showEpisodeDialog = true
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C323E)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232834)),
                         shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "إضافة يدوية", tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("إضافة يدوية", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Add, contentDescription = "إضافة يدوية", tint = Color(0xFF4CAF50), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("إضافة يدوية", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            item {
-                AnimatedVisibility(
-                    visible = isManualFormVisible,
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
-                ) {
+            // Episodes List (Strictly ordered 1, 2, 3, 4, 5, 6...)
+            if (sortedEpisodeNumbers.isEmpty()) {
+                item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222A)),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF16191F)),
                         shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("إضافة / تعديل حلقة يدوياً", color = Color.White, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            
-                            OutlinedTextField(
-                                value = manualEpNum,
-                                onValueChange = { manualEpNum = it },
-                                label = { Text("رقم الحلقة", color = Color.Gray) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFFE91E63),
-                                    unfocusedBorderColor = Color.DarkGray,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            OutlinedTextField(
-                                value = manualEpLink,
-                                onValueChange = { manualEpLink = it },
-                                label = { Text("رابط الحلقة (مباشر)", color = Color.Gray) },
-                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, tint = Color.Gray) },
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFFE91E63),
-                                    unfocusedBorderColor = Color.DarkGray,
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                                TextButton(onClick = { isManualFormVisible = false }) {
-                                    Text("إلغاء", color = Color.Gray)
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Button(
-                                    onClick = {
-                                        if (manualEpNum.isNotBlank() && manualEpLink.isNotBlank()) {
-                                            val newMap = customEpisodesState.toMutableMap()
-                                            newMap[manualEpNum] = manualEpLink
-                                            customEpisodesState = newMap
-                                            
-                                            // Update current max
-                                            val epNumInt = manualEpNum.toIntOrNull() ?: 0
-                                            val currentInt = currentEpisodesInput.toIntOrNull() ?: 0
-                                            if (epNumInt > currentInt) {
-                                                currentEpisodesInput = epNumInt.toString()
-                                            }
-                                            
-                                            isManualFormVisible = false
-                                            scope.launch { snackbarHostState.showSnackbar("تم حفظ الحلقة، اضغط (حفظ) بالأعلى لتطبيقها.") }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63))
-                                ) {
-                                    Text("تأكيد", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.MovieFilter, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(40.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("لا توجد حلقات مسجلة حالياً", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("استخدم التوليد التلقائي أو اضغط 'إضافة يدوية'", color = Color.Gray, fontSize = 12.sp)
                             }
                         }
                     }
                 }
-            }
-
-            val epsCount = currentEpisodesInput.toIntOrNull() ?: 0
-            val maxCustom = customEpisodesState.keys.mapNotNull { it.toIntOrNull() }.maxOrNull() ?: 0
-            val totalRender = maxOf(epsCount, maxCustom)
-
-            if (totalRender == 0) {
-                item {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                        Text("لا توجد حلقات. استخدم المحرك أو الإضافة اليدوية.", color = Color.Gray, fontSize = 14.sp)
-                    }
-                }
             } else {
-                items(totalRender) { index ->
-                    val epNum = (index + 1).toString()
-                    val hasCustomLink = customEpisodesState.containsKey(epNum)
-                    
+                items(sortedEpisodeNumbers, key = { it }) { epNumInt ->
+                    val epNumStr = epNumInt.toString()
+                    val customLink = customEpisodesState[epNumStr]
+                    val hasCustomLink = !customLink.isNullOrBlank()
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF16191F)),
@@ -307,54 +280,252 @@ fun AdminEpisodeManagerScreen(
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                 Box(
                                     modifier = Modifier
-                                        .size(42.dp)
-                                        .background(Color(0xFF2C323E), RoundedCornerShape(10.dp)),
+                                        .size(44.dp)
+                                        .background(
+                                            if (hasCustomLink) Color(0xFF4CAF50).copy(alpha = 0.18f) else Color(0xFF2C323E),
+                                            RoundedCornerShape(12.dp)
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(epNum, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "$epNumInt",
+                                        color = if (hasCustomLink) Color(0xFF81C784) else Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
                                 }
-                                Spacer(modifier = Modifier.width(16.dp))
+                                Spacer(modifier = Modifier.width(14.dp))
                                 Column {
-                                    Text("الحلقة $epNum", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    Text("الحلقة $epNumInt", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(3.dp))
                                     if (hasCustomLink) {
-                                        Text("مربوطة يدوياً (مخصصة)", color = Color(0xFF4CAF50), fontSize = 12.sp)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(13.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("رابط مباشر مخصص", color = Color(0xFF4CAF50), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        }
                                     } else {
-                                        Text("جودة متعددة (تلقائي)", color = Color(0xFFA0AABF), fontSize = 12.sp)
+                                        Text("جودة متعددة (سيرفر ذكي)", color = Color(0xFFA0AABF), fontSize = 11.sp)
                                     }
                                 }
                             }
-                            Row {
-                                IconButton(onClick = { 
-                                    manualEpNum = epNum
-                                    manualEpLink = customEpisodesState[epNum] ?: ""
-                                    isManualFormVisible = true
-                                }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "تعديل", tint = Color.Gray, modifier = Modifier.size(20.dp))
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        isEditingExisting = true
+                                        dialogEpisodeNum = epNumStr
+                                        dialogEpisodeLink = customLink ?: ""
+                                        showEpisodeDialog = true
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = "تعديل", tint = Color(0xFF90CAF9), modifier = Modifier.size(20.dp))
                                 }
                                 IconButton(
                                     onClick = {
-                                        if (hasCustomLink) {
-                                            val newMap = customEpisodesState.toMutableMap()
-                                            newMap.remove(epNum)
-                                            customEpisodesState = newMap
-                                            scope.launch { snackbarHostState.showSnackbar("تمت إزالة الرابط اليدوي، سيعود للوضع التلقائي") }
-                                        } else {
-                                            if (epNum.toInt() == totalRender) {
-                                                currentEpisodesInput = (totalRender - 1).toString()
-                                            }
+                                        val newMap = customEpisodesState.toMutableMap()
+                                        newMap.remove(epNumStr)
+                                        customEpisodesState = newMap
+                                        
+                                        // If it's the last episode in count, decrement count
+                                        val maxRemaining = (sortedEpisodeNumbers.filter { it != epNumInt } + newMap.keys.mapNotNull { it.toIntOrNull() }).maxOrNull() ?: 0
+                                        currentEpisodesInput = maxRemaining.toString()
+                                        
+                                        // Save immediately
+                                        if (anime != null) {
+                                            val updated = anime.copy(
+                                                currentEpisodes = maxRemaining,
+                                                customEpisodes = newMap
+                                            )
+                                            viewModel.saveAnime(updated)
                                         }
+                                        scope.launch { snackbarHostState.showSnackbar("تم حذف الحلقة $epNumInt") }
                                     }
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color.Red.copy(alpha = 0.8f), modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = Color(0xFFE57373), modifier = Modifier.size(20.dp))
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // POPUP MODAL DIALOG FOR ADD / EDIT EPISODE
+    // ==========================================
+    if (showEpisodeDialog) {
+        Dialog(onDismissRequest = { showEpisodeDialog = false }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E222D)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    // Dialog Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color(0xFFE91E63).copy(alpha = 0.15f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isEditingExisting) Icons.Default.Edit else Icons.Default.AddCircle,
+                                    contentDescription = null,
+                                    tint = Color(0xFFE91E63),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = if (isEditingExisting) "تعديل الحلقة $dialogEpisodeNum" else "إضافة حلقة يدوية",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        IconButton(onClick = { showEpisodeDialog = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.Gray)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Episode Number Input
+                    OutlinedTextField(
+                        value = dialogEpisodeNum,
+                        onValueChange = { dialogEpisodeNum = it },
+                        label = { Text("رقم الحلقة (مثال: 1, 2, 8...)", color = Color.Gray, fontSize = 13.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        leadingIcon = {
+                            Icon(Icons.Default.Tag, contentDescription = null, tint = Color(0xFFE91E63), modifier = Modifier.size(20.dp))
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFFE91E63),
+                            unfocusedBorderColor = Color(0xFF373E4E),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            cursorColor = Color(0xFFE91E63)
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Episode Stream Link Input
+                    OutlinedTextField(
+                        value = dialogEpisodeLink,
+                        onValueChange = { dialogEpisodeLink = it },
+                        label = { Text("رابط الفيديو المباشر (mp4/m3u8)", color = Color.Gray, fontSize = 13.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4CAF50),
+                            unfocusedBorderColor = Color(0xFF373E4E),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            cursorColor = Color(0xFF4CAF50)
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Action Buttons (Cancel / Confirm)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showEpisodeDialog = false },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.LightGray)
+                        ) {
+                            Text("إلغاء", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        Button(
+                            onClick = {
+                                val epNum = dialogEpisodeNum.trim()
+                                val epNumInt = epNum.toIntOrNull()
+                                if (epNumInt != null && epNumInt > 0) {
+                                    val newMap = customEpisodesState.toMutableMap()
+                                    if (dialogEpisodeLink.isNotBlank()) {
+                                        newMap[epNum] = dialogEpisodeLink.trim()
+                                    } else {
+                                        newMap.remove(epNum)
+                                    }
+                                    customEpisodesState = newMap
+
+                                    // Update max episode count
+                                    val currentMax = currentEpisodesInput.toIntOrNull() ?: 0
+                                    val newMax = maxOf(currentMax, epNumInt)
+                                    currentEpisodesInput = newMax.toString()
+
+                                    // Instantly sync & save to database and ViewModel
+                                    if (anime != null) {
+                                        val updatedAnime = anime.copy(
+                                            currentEpisodes = newMax,
+                                            customEpisodes = newMap
+                                        )
+                                        viewModel.saveAnime(updatedAnime)
+                                    }
+
+                                    showEpisodeDialog = false
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("تم حفظ وتثبيت الحلقة $epNum بنجاح!")
+                                    }
+                                } else {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("يرجى إدخال رقم حلقة صحيح")
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63)),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isEditingExisting) "حفظ التعديل" else "إضافة الحلقة",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

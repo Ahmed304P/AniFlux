@@ -1,99 +1,61 @@
-<<<<
-        // Title below poster
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            contentAlignment = Alignment.TopStart
-        ) {
-            Text(
-                text = anime.titleAr.ifEmpty { anime.titleEn },
-                color = Color.White.copy(alpha = 0.9f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Start
-            )
+    sealed class OverlayState {
+        val id: String = java.util.UUID.randomUUID().toString()
+        data class AnimeDetails(val anime: Anime) : OverlayState()
+        data class Search(val filterState: FilterState) : OverlayState()
+    }
+
+    private val _overlayStack = MutableStateFlow<List<OverlayState>>(emptyList())
+    val overlayStack: StateFlow<List<OverlayState>> = _overlayStack.asStateFlow()
+
+    fun openSearch() {
+        val currentStack = _overlayStack.value.toMutableList()
+        if (currentStack.isNotEmpty() && currentStack.last() is OverlayState.Search) {
+            return
         }
-        Spacer(modifier = Modifier.height(2.dp))
-        // Status and Rating Row: "مستمر  ⭐ 9.14"
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = anime.status,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = null,
-                    tint = AniFluxStar,
-                    modifier = Modifier.size(11.dp)
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = "${anime.rating}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
+        currentStack.add(OverlayState.Search(_filterState.value))
+        _overlayStack.value = currentStack
+    }
+
+    fun openSearchWithGenre(genre: String) {
+        resetFilters()
+        updateGenreFilter(genre)
+        val currentStack = _overlayStack.value.toMutableList()
+        currentStack.add(OverlayState.Search(_filterState.value))
+        _overlayStack.value = currentStack
+    }
+
+    fun openSearchWithStudio(studio: String) {
+        resetFilters()
+        updateStudioFilter(studio)
+        val currentStack = _overlayStack.value.toMutableList()
+        currentStack.add(OverlayState.Search(_filterState.value))
+        _overlayStack.value = currentStack
+    }
+
+    fun popOverlay(): Boolean {
+        val currentStack = _overlayStack.value
+        if (currentStack.isNotEmpty()) {
+            val newStack = currentStack.dropLast(1)
+            _overlayStack.value = newStack
+            val newTop = newStack.lastOrNull()
+            if (newTop is OverlayState.Search) {
+                _filterState.value = newTop.filterState
             }
+            if (newTop is OverlayState.AnimeDetails) {
+                _selectedAnimeForDetails.value = newTop.anime
+            } else if (newTop == null) {
+                _selectedAnimeForDetails.value = null
+            }
+            return true
         }
-====
-        // Title below poster
-        val titleText = anime.titleAr.ifEmpty { anime.titleEn }
-        val isArabicText = titleText.any { it in '\u0600'..'\u06FF' }
-        
-        androidx.compose.runtime.CompositionLocalProvider(
-            androidx.compose.ui.platform.LocalLayoutDirection provides if (isArabicText) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
-        ) {
-            Text(
-                text = titleText,
-                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f),
-                fontSize = 13.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Normal,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                textAlign = if (isArabicText) androidx.compose.ui.text.style.TextAlign.Right else androidx.compose.ui.text.style.TextAlign.Left,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(2.dp))
-        // Status and Rating Row: "مستمر ⭐ 9.14"
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp),
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = anime.status,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.Default.Star,
-                contentDescription = null,
-                tint = AniFluxStar,
-                modifier = Modifier.size(11.dp)
-            )
-            Spacer(modifier = Modifier.width(2.dp))
-            Text(
-                text = "${anime.rating}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Normal
-            )
-        }
->>>>
+        return false
+    }
+
+    fun clearOverlays() {
+        _overlayStack.value = emptyList()
+        _selectedAnimeForDetails.value = null
+    }
+
+    // Active Anime Details Screen
+    private val _selectedAnimeForDetails = MutableStateFlow<Anime?>(null)
+    val selectedAnimeForDetails: StateFlow<Anime?> = _selectedAnimeForDetails.asStateFlow()

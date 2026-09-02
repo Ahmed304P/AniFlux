@@ -599,21 +599,33 @@ class AnimeRepository(private val dao: AniFluxDao) {
     
     suspend fun removeWatchHistoryByAnime(animeId: String) = dao.removeWatchHistoryByAnime(animeId)
     
-    suspend fun recordWatchProgress(animeId: String, episodeNumber: Int, currentSeconds: Int, totalSeconds: Int) {
+    suspend fun recordWatchProgress(animeId: String, episodeNumber: Int, episodeTitle: String = "الحلقة", progressSeconds: Int, totalSeconds: Int) {
         val historyId = "${animeId}_${episodeNumber}"
-        val existing = dao.getEpisodeHistory(historyId)
         val entity = WatchHistoryEntity(
             historyId = historyId,
             animeId = animeId,
             episodeNumber = episodeNumber,
-            currentSeconds = currentSeconds,
+            episodeTitle = episodeTitle,
+            progressSeconds = progressSeconds,
             totalSeconds = totalSeconds,
             lastWatchedTimestamp = System.currentTimeMillis()
         )
         dao.saveWatchHistory(entity)
     }
     
-    fun getLocalComments(animeId: String, episodeNumber: Int): Flow<List<LocalCommentEntity>> {
-        return dao.getCommentsForEpisode(animeId, episodeNumber)
+    fun getLocalComments(animeId: String, episodeNumber: Int): Flow<List<com.example.data.model.CommentItem>> {
+        return dao.getCommentsForEpisode(animeId, episodeNumber).map { list ->
+            list.map {
+                com.example.data.model.CommentItem(
+                    id = it.id.toString(),
+                    authorName = it.authorName,
+                    avatarUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop",
+                    content = it.content,
+                    timeAgo = it.timestamp,
+                    likesCount = it.likesCount,
+                    isLikedByMe = it.isLiked
+                )
+            }
+        }
     }
 }

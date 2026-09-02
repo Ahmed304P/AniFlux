@@ -234,6 +234,67 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
         }.sortedByDescending { it.rating }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    sealed class OverlayState {
+        val id: String = java.util.UUID.randomUUID().toString()
+        data class AnimeDetails(val anime: Anime) : OverlayState()
+        data class Search(val filterState: FilterState) : OverlayState()
+    }
+
+    private val _overlayStack = MutableStateFlow<List<OverlayState>>(emptyList())
+    val overlayStack: StateFlow<List<OverlayState>> = _overlayStack.asStateFlow()
+
+    fun openSearch() {
+        val currentStack = _overlayStack.value.toMutableList()
+        if (currentStack.isNotEmpty() && currentStack.last() is OverlayState.Search) {
+            return
+        }
+        currentStack.add(OverlayState.Search(_filterState.value))
+        _overlayStack.value = currentStack
+        _selectedAnimeForDetails.value = null
+    }
+
+    fun openSearchWithGenre(genre: String) {
+        resetFilters()
+        updateGenreFilter(genre)
+        val currentStack = _overlayStack.value.toMutableList()
+        currentStack.add(OverlayState.Search(_filterState.value))
+        _overlayStack.value = currentStack
+        _selectedAnimeForDetails.value = null
+    }
+
+    fun openSearchWithStudio(studio: String) {
+        resetFilters()
+        updateStudioFilter(studio)
+        val currentStack = _overlayStack.value.toMutableList()
+        currentStack.add(OverlayState.Search(_filterState.value))
+        _overlayStack.value = currentStack
+        _selectedAnimeForDetails.value = null
+    }
+
+    fun popOverlay(): Boolean {
+        val currentStack = _overlayStack.value
+        if (currentStack.isNotEmpty()) {
+            val newStack = currentStack.dropLast(1)
+            _overlayStack.value = newStack
+            val newTop = newStack.lastOrNull()
+            if (newTop is OverlayState.Search) {
+                _filterState.value = newTop.filterState
+                _selectedAnimeForDetails.value = null
+            } else if (newTop is OverlayState.AnimeDetails) {
+                _selectedAnimeForDetails.value = newTop.anime
+            } else if (newTop == null) {
+                _selectedAnimeForDetails.value = null
+            }
+            return true
+        }
+        return false
+    }
+
+    fun clearOverlays() {
+        _overlayStack.value = emptyList()
+        _selectedAnimeForDetails.value = null
+    }
+
     // Active Anime Details Screen
     private val _selectedAnimeForDetails = MutableStateFlow<Anime?>(null)
     val selectedAnimeForDetails: StateFlow<Anime?> = _selectedAnimeForDetails.asStateFlow()
@@ -247,6 +308,12 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openAnimeDetails(anime: Anime) {
         _selectedAnimeForDetails.value = anime
+        val currentStack = _overlayStack.value.toMutableList()
+        if (currentStack.isNotEmpty() && currentStack.last() is OverlayState.Search) {
+            currentStack[currentStack.size - 1] = OverlayState.Search(_filterState.value)
+        }
+        currentStack.add(OverlayState.AnimeDetails(anime))
+        _overlayStack.value = currentStack
         // Auto-add to watch history when entering details screen
         viewModelScope.launch {
             repository.recordWatchProgress(anime.id, 0, "Details", 0, 0)
@@ -254,7 +321,7 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeAnimeDetails() {
-        _selectedAnimeForDetails.value = null
+        popOverlay()
     }
 
     // Active Video Player Modal
@@ -287,6 +354,10 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getAnimeSavedStatus(animeId: String): Flow<String?> {
         return repository.getSavedAnimeById(animeId).map { it?.status }
+    }
+
+    fun getUserRating(animeId: String): Flow<Int?> {
+        return repository.getSavedAnimeById(animeId).map { it?.userRating }
     }
 
     fun toggleSaveAnime(animeId: String, status: String = "FAVORITE") {

@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -48,6 +49,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material.icons.automirrored.filled.StarHalf
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.example.util.shimmerEffect
@@ -63,6 +67,7 @@ fun AnimeDetailScreen(
     episodes: List<Episode>,
     isSaved: Boolean,
     savedStatus: String?,
+    userRating: Int?,
     watchedEpisodes: Set<Int>,
     onToggleWatched: (Int, Boolean) -> Unit,
     onRateAnime: (Int) -> Unit = {},
@@ -70,6 +75,8 @@ fun AnimeDetailScreen(
     onToggleSave: (String) -> Unit,
     onRemoveSaved: (String) -> Unit,
     onOpenPlayer: (Episode) -> Unit,
+    onGenreClick: (String) -> Unit = {},
+    onStudioClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -189,7 +196,7 @@ fun AnimeDetailScreen(
                 label = "TabContentAnimation"
             ) { targetIndex ->
                 when (targetIndex) {
-                    0 -> AnimeDetailsTabContent(anime = anime, isSaved = isSaved, savedStatus = savedStatus, onOpenMyListOptions = { showMyListSheet = true }, onRateClick = { showRatingDialog = true }, lazyListState = detailsListState)
+                    0 -> AnimeDetailsTabContent(anime = anime, isSaved = isSaved, savedStatus = savedStatus, userRating = userRating, onOpenMyListOptions = { showMyListSheet = true }, onRateClick = { showRatingDialog = true }, onGenreClick = onGenreClick, onStudioClick = onStudioClick, lazyListState = detailsListState)
                     1 -> AnimeEpisodesTabContent(episodes, watchedEpisodes, onToggleWatched, onOpenPlayer)
                     2 -> AnimeStatsTabContent(anime, isSaved, savedStatus)
                     3 -> AnimeCharactersTabContent(anime)
@@ -212,35 +219,111 @@ fun AnimeDetailScreen(
     
     
     if (showRatingDialog) {
+        var storyRating by remember { mutableFloatStateOf((userRating ?: 0).toFloat()) }
+        var charactersRating by remember { mutableFloatStateOf((userRating ?: 0).toFloat()) }
+        var artRating by remember { mutableFloatStateOf((userRating ?: 0).toFloat()) }
+        var musicRating by remember { mutableFloatStateOf((userRating ?: 0).toFloat()) }
+
+        val totalAverage = ((storyRating + charactersRating + artRating + musicRating) / 4f).toInt()
+
         AlertDialog(
             onDismissRequest = { showRatingDialog = false },
-            title = { Text("تقييم الأنمي", color = Color.White) },
             text = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    for (i in 1..10) {
-                        if (i % 2 == 0) { // Just show 5 stars (each represents 2 points)
-                            Icon(
-                                imageVector = Icons.Default.StarBorder,
-                                contentDescription = "$i",
-                                tint = Color.Yellow,
-                                modifier = Modifier.size(32.dp).clickable {
-                                    onRateAnime(i)
-                                    showRatingDialog = false
-                                }
+                    val categories = listOf(
+                        "القصة" to storyRating,
+                        "الشخصيات" to charactersRating,
+                        "الرسم والتحريك" to artRating,
+                        "الموسيقى" to musicRating
+                    )
+                    
+                    categories.forEachIndexed { index, (name, value) ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                            Text(
+                                text = name,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                modifier = Modifier.align(Alignment.End)
                             )
+                            Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
+                                Slider(
+                                    value = value,
+                                    onValueChange = { newValue ->
+                                        when (index) {
+                                            0 -> storyRating = newValue
+                                            1 -> charactersRating = newValue
+                                            2 -> artRating = newValue
+                                            3 -> musicRating = newValue
+                                        }
+                                    },
+                                    valueRange = 0f..10f,
+                                    steps = 9,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = Color(0xFF1E88E5), 
+                                        activeTrackColor = Color(0xFF1E88E5),
+                                        inactiveTrackColor = Color.DarkGray,
+                                        activeTickColor = Color.Transparent,
+                                        inactiveTickColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                                // To show the thumb value exactly like video (above thumb), requires custom logic.
+                                // Instead, showing a badge above the slider is harder without Custom Slider. 
+                                // We'll just show the value next to the name, or in a badge in the UI if possible.
+                                Box(modifier = Modifier.align(Alignment.TopCenter).offset(y = (-10).dp)) {
+                                    Surface(
+                                        color = Color(0xFF1E88E5),
+                                        shape = CircleShape,
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(text = "${value.toInt()}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                for (i in 0..10) {
+                                    Text(
+                                        text = "$i",
+                                        color = Color.Gray,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
                         }
                     }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "$totalAverage/10",
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showRatingDialog = false }) {
-                    Text("إلغاء", color = Color.White)
+                TextButton(onClick = { 
+                    onRateAnime(totalAverage)
+                    showRatingDialog = false 
+                }) {
+                    Text("حسنا", color = Color(0xFF1E88E5), fontSize = 16.sp)
                 }
             },
-            containerColor = MaterialTheme.colorScheme.surface
+            dismissButton = {
+                TextButton(onClick = { showRatingDialog = false }) {
+                    Text("إلغاء", color = Color(0xFF1E88E5), fontSize = 16.sp)
+                }
+            },
+            containerColor = Color(0xFF1C1C1E)
         )
     }
 
@@ -311,7 +394,7 @@ fun AnimeDetailScreen(
 }
 
 @Composable
-fun AnimeDetailsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?, onOpenMyListOptions: () -> Unit, onRateClick: () -> Unit, lazyListState: androidx.compose.foundation.lazy.LazyListState) {
+fun AnimeDetailsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?, userRating: Int?, onOpenMyListOptions: () -> Unit, onRateClick: () -> Unit, onGenreClick: (String) -> Unit = {}, onStudioClick: (String) -> Unit = {}, lazyListState: androidx.compose.foundation.lazy.LazyListState) {
     LazyColumn(
         state = lazyListState,
         modifier = Modifier.fillMaxSize(),
@@ -322,15 +405,15 @@ fun AnimeDetailsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?,
         }
         
         item {
-            AnimeActionsRow(anime = anime, isSaved = isSaved, savedStatus = savedStatus, onOpenMyListOptions = onOpenMyListOptions, onRateClick = onRateClick)
+            AnimeActionsRow(anime = anime, isSaved = isSaved, savedStatus = savedStatus, userRating = userRating, onOpenMyListOptions = onOpenMyListOptions, onRateClick = onRateClick)
         }
         
         item {
-            AnimeSynopsisSection(anime)
+            AnimeSynopsisSection(anime, onGenreClick)
         }
         
         item {
-            AnimeInfoGrid(anime)
+            AnimeInfoGrid(anime, onStudioClick)
         }
         
         item {
@@ -348,28 +431,45 @@ fun AnimeDetailsHeader(anime: Anime, lazyListState: androidx.compose.foundation.
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(260.dp)
+            .height(300.dp)
+            .clipToBounds() // CRITICAL FIX: prevents the image from bleeding out
     ) {
-        // Blurred Background
+        // Main Background Banner (Clear, not blurred)
         SubcomposeAsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(anime.bannerUrl.ifEmpty { anime.posterUrl })
                 .crossfade(true)
                 .build(),
             loading = { androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize().shimmerEffect()) },
-            contentDescription = null,
+            contentDescription = anime.titleAr,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    clip = true
                     if (lazyListState != null && lazyListState.firstVisibleItemIndex == 0) {
                         translationY = lazyListState.firstVisibleItemScrollOffset * 0.4f
                     }
                 }
-                .blur(radius = 24.dp)
         )
         
-        // Gradient overlay for better readability
+        // Netflix-style Horizontal Vignette (Dark on sides)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.85f),
+                            Color.Black.copy(alpha = 0.2f),
+                            Color.Black.copy(alpha = 0.2f),
+                            Color.Black.copy(alpha = 0.85f)
+                        )
+                    )
+                )
+        )
+
+        // Vertical gradient for readability at the bottom, blending smoothly into the background
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -377,7 +477,8 @@ fun AnimeDetailsHeader(anime: Anime, lazyListState: androidx.compose.foundation.
                     Brush.verticalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.6f),
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
                             MaterialTheme.colorScheme.background
                         ),
                         startY = 100f
@@ -385,57 +486,51 @@ fun AnimeDetailsHeader(anime: Anime, lazyListState: androidx.compose.foundation.
                 )
         )
 
+        // Exact Layout from the Old Version Screenshot
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomStart)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.Bottom
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Poster
+            // Right Side: Poster
             SubcomposeAsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(anime.posterUrl)
-                    .crossfade(true)
-                    .build(),
+                model = anime.posterUrl,
                 loading = { androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize().shimmerEffect()) },
-            contentDescription = anime.titleAr,
+                contentDescription = anime.titleAr,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .width(110.dp)
-                    .height(160.dp)
+                    .width(115.dp)
+                    .height(170.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
             )
 
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Details next to poster
-            Column(modifier = Modifier.weight(1f)) {
+            // Left Side: Text Column
+            Column(
+                modifier = Modifier.weight(1f) // Defaults to Alignment.Start (Right in RTL)
+            ) {
                 Text(
                     text = anime.titleAr.ifEmpty { anime.titleEn },
                     color = Color.White,
-                    fontSize = 17.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 4,
-                    lineHeight = 22.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                    maxLines = 3,
+                    lineHeight = 26.sp,
                     overflow = TextOverflow.Ellipsis
                 )
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "(${anime.status}) صيف ${anime.year}",
-                    color = Color.LightGray,
+                    text = "(${anime.status}) ${anime.season} ${anime.year}", 
+                    color = Color.LightGray, 
                     fontSize = 14.sp
                 )
-                
                 Spacer(modifier = Modifier.height(4.dp))
-                
                 Text(
-                    text = "${anime.type} | ${anime.currentEpisodes} حلقة | +13",
-                    color = Color.LightGray,
+                    text = "${anime.currentEpisodes} | ${anime.type} حلقة | +13", 
+                    color = Color.LightGray, 
                     fontSize = 14.sp
                 )
             }
@@ -448,6 +543,7 @@ fun AnimeActionsRow(
     anime: Anime, 
     isSaved: Boolean, 
     savedStatus: String?, 
+    userRating: Int?,
     onOpenMyListOptions: () -> Unit,
     onRateClick: () -> Unit
 ) {
@@ -470,9 +566,16 @@ fun AnimeActionsRow(
         
         // Add Rating
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.bounceClick { onRateClick() }) {
-            Icon(Icons.Default.StarBorder, contentDescription = "Add Rating", tint = Color.White, modifier = Modifier.size(32.dp))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "إضافة تقييم", color = Color.White, fontSize = 14.sp)
+            if (userRating != null && userRating > 0) {
+                Icon(Icons.Default.Star, contentDescription = "Edit Rating", tint = Color(0xFF8B0000), modifier = Modifier.size(32.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "التقييم الجمعي", color = Color.Gray, fontSize = 10.sp)
+                Text(text = "$userRating/10", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Icon(Icons.Default.StarBorder, contentDescription = "Add Rating", tint = Color.White, modifier = Modifier.size(32.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "إضافة تقييم", color = Color.White, fontSize = 14.sp)
+            }
         }
         
         // My List
@@ -502,7 +605,7 @@ fun AnimeActionsRow(
 }
 
 @Composable
-fun AnimeSynopsisSection(anime: Anime) {
+fun AnimeSynopsisSection(anime: Anime, onGenreClick: (String) -> Unit = {}) {
     Column(modifier = Modifier.padding(16.dp)) {
         Text(
             text = anime.synopsisAr,
@@ -521,7 +624,8 @@ fun AnimeSynopsisSection(anime: Anime) {
             anime.genres.take(4).forEach { genre ->
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    onClick = { onGenreClick(genre) }
                 ) {
                     Text(
                         text = genre, 
@@ -536,7 +640,7 @@ fun AnimeSynopsisSection(anime: Anime) {
 }
 
 @Composable
-fun AnimeInfoGrid(anime: Anime) {
+fun AnimeInfoGrid(anime: Anime, onStudioClick: (String) -> Unit = {}) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
@@ -556,7 +660,7 @@ fun AnimeInfoGrid(anime: Anime) {
             }
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
-                InfoItem(title = "الاستوديو", value = anime.studio, isChip = true, modifier = Modifier.weight(1f))
+                InfoItem(title = "الاستوديو", value = anime.studio, isChip = true, modifier = Modifier.weight(1f), onClick = { onStudioClick(anime.studio) })
                 InfoItem(title = "العنوان الانجليزي", value = anime.titleAr, modifier = Modifier.weight(1f))
             }
         }
@@ -564,21 +668,36 @@ fun AnimeInfoGrid(anime: Anime) {
 }
 
 @Composable
-fun InfoItem(title: String, value: String, isChip: Boolean = false, modifier: Modifier = Modifier) {
+fun InfoItem(title: String, value: String, isChip: Boolean = false, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     Column(modifier = modifier, horizontalAlignment = Alignment.End) {
         Text(text = title, color = Color.Gray, fontSize = 12.sp)
         Spacer(modifier = Modifier.height(4.dp))
         if (isChip) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text(
-                    text = value, 
-                    color = Color.White, 
-                    fontSize = 12.sp, 
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                )
+            if (onClick != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(16.dp),
+                    onClick = onClick
+                ) {
+                    Text(
+                        text = value, 
+                        color = Color.White, 
+                        fontSize = 12.sp, 
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = value, 
+                        color = Color.White, 
+                        fontSize = 12.sp, 
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
             }
         } else {
             Text(
