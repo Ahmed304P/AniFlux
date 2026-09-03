@@ -326,14 +326,18 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
 
     // Active Video Player Modal
     private val _activePlayerEpisode = MutableStateFlow<Pair<Anime, Episode>?>(null)
-    val activePlayerEpisode: StateFlow<Pair<Anime, Episode>?> = _activePlayerEpisode.asStateFlow()
+    val activePlayerEpisode = _activePlayerEpisode.asStateFlow()
+    private val _activePlayerServer = MutableStateFlow<com.example.data.model.StreamServer?>(null)
+    val activePlayerServer = _activePlayerServer.asStateFlow()
 
-    fun openPlayer(anime: Anime, episode: Episode) {
+    fun openPlayer(anime: Anime, episode: Episode, server: com.example.data.model.StreamServer? = null) {
+        _activePlayerServer.value = server
         _activePlayerEpisode.value = Pair(anime, episode)
     }
 
     fun closePlayer() {
         _activePlayerEpisode.value = null
+        _activePlayerServer.value = null
     }
 
     // Episodes list for current anime

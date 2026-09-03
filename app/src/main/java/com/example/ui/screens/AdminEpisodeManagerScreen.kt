@@ -20,6 +20,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import java.net.HttpURLConnection
+import java.net.URL
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,8 +56,9 @@ fun AdminEpisodeManagerScreen(
     // Dialog State for Manual Add / Edit
     var showEpisodeDialog by remember { mutableStateOf(false) }
     var dialogEpisodeNum by remember { mutableStateOf("") }
-    var dialogEpisodeLink by remember { mutableStateOf("") }
+    var dialogServerLinks by remember { mutableStateOf(listOf("")) }
     var isEditingExisting by remember { mutableStateOf(false) }
+    var isCheckingLinks by remember { mutableStateOf(false) }
 
     // Save changes globally
     val saveChangesGlobally = {
@@ -62,7 +67,12 @@ fun AdminEpisodeManagerScreen(
                 isSaving = true
                 val episodesCount = currentEpisodesInput.toIntOrNull() ?: 0
                 val maxCustom = customEpisodesState.keys.mapNotNull { it.toIntOrNull() }.maxOrNull() ?: 0
-                val finalEpisodesCount = maxOf(episodesCount, maxCustom)
+                var finalEpisodesCount = maxOf(episodesCount, maxCustom)
+                
+                // Ensure at least 1 episode is generated if server ID is provided
+                if (serverIdInput.isNotBlank() && finalEpisodesCount == 0) {
+                    finalEpisodesCount = 1
+                }
                 
                 val updatedAnime = anime.copy(
                     serverId = serverIdInput,
@@ -229,7 +239,7 @@ fun AdminEpisodeManagerScreen(
                             isEditingExisting = false
                             val nextNum = if (sortedEpisodeNumbers.isEmpty()) 1 else (sortedEpisodeNumbers.maxOrNull() ?: 0) + 1
                             dialogEpisodeNum = nextNum.toString()
-                            dialogEpisodeLink = ""
+                            dialogServerLinks = listOf("")
                             showEpisodeDialog = true
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232834)),
@@ -324,7 +334,11 @@ fun AdminEpisodeManagerScreen(
                                     onClick = {
                                         isEditingExisting = true
                                         dialogEpisodeNum = epNumStr
-                                        dialogEpisodeLink = customLink ?: ""
+                                        dialogServerLinks = if (customLink.isNullOrBlank()) listOf("") 
+                                            else customLink.split(",").map { 
+                                                val parts = it.split("|", limit = 2)
+                                                if (parts.size == 2) parts[1].trim() else parts[0].trim() 
+                                            }
                                         showEpisodeDialog = true
                                     }
                                 ) {
@@ -437,25 +451,61 @@ fun AdminEpisodeManagerScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Episode Stream Link Input
-                    OutlinedTextField(
-                        value = dialogEpisodeLink,
-                        onValueChange = { dialogEpisodeLink = it },
-                        label = { Text("رابط الفيديو المباشر (mp4/m3u8)", color = Color.Gray, fontSize = 13.sp) },
-                        leadingIcon = {
-                            Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                    // Episode Stream Link Inputs
+                    Text("السيرفرات:", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    dialogServerLinks.forEachIndexed { index, link ->
+                        OutlinedTextField(
+                            value = link,
+                            onValueChange = { newLink ->
+                                val newList = dialogServerLinks.toMutableList()
+                                newList[index] = newLink
+                                dialogServerLinks = newList
+                            },
+                            label = { Text("رابط سيرفر ${index + 1}", color = Color.Gray, fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                            },
+                            trailingIcon = {
+                                if (dialogServerLinks.size > 1) {
+                                    IconButton(onClick = {
+                                        val newList = dialogServerLinks.toMutableList()
+                                        newList.removeAt(index)
+                                        dialogServerLinks = newList
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف السيرفر", tint = Color.Red)
+                                    }
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF4CAF50),
+                                unfocusedBorderColor = Color(0xFF373E4E),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = Color(0xFF4CAF50)
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    
+                    OutlinedButton(
+                        onClick = {
+                            val newList = dialogServerLinks.toMutableList()
+                            newList.add("")
+                            dialogServerLinks = newList
                         },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF4CAF50),
-                            unfocusedBorderColor = Color(0xFF373E4E),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            cursorColor = Color(0xFF4CAF50)
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF4CAF50))
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("إضافة سيرفر إضافي", fontWeight = FontWeight.Bold)
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -476,56 +526,82 @@ fun AdminEpisodeManagerScreen(
                         }
 
                         Button(
+                            enabled = !isCheckingLinks,
                             onClick = {
-                                val epNum = dialogEpisodeNum.trim()
-                                val epNumInt = epNum.toIntOrNull()
-                                if (epNumInt != null && epNumInt > 0) {
-                                    val newMap = customEpisodesState.toMutableMap()
-                                    if (dialogEpisodeLink.isNotBlank()) {
-                                        newMap[epNum] = dialogEpisodeLink.trim()
+                                scope.launch {
+                                    isCheckingLinks = true
+                                    val epNum = dialogEpisodeNum.trim()
+                                    val epNumInt = epNum.toIntOrNull()
+                                    if (epNumInt != null && epNumInt > 0) {
+                                        val validLinks = mutableListOf<String>()
+                                        for (link in dialogServerLinks.filter { it.isNotBlank() }) {
+                                            val isValid = withContext(Dispatchers.IO) {
+                                                try {
+                                                    val url = URL(link.trim())
+                                                    val connection = url.openConnection() as HttpURLConnection
+                                                    connection.requestMethod = "HEAD"
+                                                    connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+                                                    connection.connectTimeout = 4000
+                                                    connection.readTimeout = 4000
+                                                    connection.responseCode 
+                                                    true 
+                                                } catch (e: Exception) {
+                                                    android.webkit.URLUtil.isValidUrl(link.trim())
+                                                }
+                                            }
+                                            if (isValid) {
+                                                validLinks.add(link.trim())
+                                            } else {
+                                                // Optional: we can alert the user, or just silently discard
+                                                // We will just discard it per request: "استبعاد الروابط المعطوبة"
+                                            }
+                                        }
+
+                                        val newMap = customEpisodesState.toMutableMap()
+                                        if (validLinks.isNotEmpty()) {
+                                            val formattedString = validLinks.mapIndexed { i, url -> "سيرفر ${i + 1}|$url" }.joinToString(", ")
+                                            newMap[epNum] = formattedString
+                                        } else {
+                                            newMap.remove(epNum)
+                                        }
+                                        customEpisodesState = newMap
+
+                                        val currentMax = currentEpisodesInput.toIntOrNull() ?: 0
+                                        val newMax = maxOf(currentMax, epNumInt)
+                                        currentEpisodesInput = newMax.toString()
+
+                                        if (anime != null) {
+                                            val updatedAnime = anime.copy(
+                                                currentEpisodes = newMax,
+                                                customEpisodes = newMap
+                                            )
+                                            viewModel.saveAnime(updatedAnime)
+                                        }
+
+                                        showEpisodeDialog = false
+                                        snackbarHostState.showSnackbar("تم الحفظ بنجاح!")
                                     } else {
-                                        newMap.remove(epNum)
-                                    }
-                                    customEpisodesState = newMap
-
-                                    // Update max episode count
-                                    val currentMax = currentEpisodesInput.toIntOrNull() ?: 0
-                                    val newMax = maxOf(currentMax, epNumInt)
-                                    currentEpisodesInput = newMax.toString()
-
-                                    // Instantly sync & save to database and ViewModel
-                                    if (anime != null) {
-                                        val updatedAnime = anime.copy(
-                                            currentEpisodes = newMax,
-                                            customEpisodes = newMap
-                                        )
-                                        viewModel.saveAnime(updatedAnime)
-                                    }
-
-                                    showEpisodeDialog = false
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("تم حفظ وتثبيت الحلقة $epNum بنجاح!")
-                                    }
-                                } else {
-                                    scope.launch {
                                         snackbarHostState.showSnackbar("يرجى إدخال رقم حلقة صحيح")
                                     }
+                                    isCheckingLinks = false
                                 }
                             },
-                            modifier = Modifier
-                                .weight(1.5f)
-                                .height(48.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63)),
                             shape = RoundedCornerShape(14.dp)
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isEditingExisting) "حفظ التعديل" else "إضافة الحلقة",
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            if (isCheckingLinks) {
+                                androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                            } else {
+                                Text(
+                                    text = if (isEditingExisting) "حفظ التعديل" else "إضافة الحلقة",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }

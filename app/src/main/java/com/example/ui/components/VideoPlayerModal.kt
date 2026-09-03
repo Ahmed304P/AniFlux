@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import com.example.ui.components.bounceClick
@@ -37,20 +38,22 @@ fun VideoPlayerModal(
     allEpisodes: List<Episode>,
     comments: List<CommentItem>,
     onClose: () -> Unit,
-    onSelectEpisode: (Episode) -> Unit,
+    onSelectEpisode: (Episode, com.example.data.model.StreamServer?) -> Unit,
     onAddComment: (String) -> Unit,
     onLikeComment: (String) -> Unit,
     onRecordProgress: (Int, Int) -> Unit,
     skipTime: Int = 10,
+    initialServer: com.example.data.model.StreamServer? = null,
     modifier: Modifier = Modifier
 ) {
     var isPlaying by remember { mutableStateOf(true) }
     var currentProgressSeconds by remember { mutableFloatStateOf(0f) }
     var skipUsed by remember(currentEpisode) { mutableStateOf(false) } // 2 mins in
     val totalSeconds = (currentEpisode.durationMinutes * 60).toFloat()
-    var selectedServer by remember(currentEpisode) { mutableStateOf(currentEpisode.servers.firstOrNull()) }
+    var selectedServer by remember(currentEpisode, initialServer) { mutableStateOf(initialServer ?: currentEpisode.servers.firstOrNull()) }
     var showServerSelector by remember { mutableStateOf(false) }
     var selectedSpeed by remember { mutableFloatStateOf(1.0f) }
+    var isFullscreen by remember { mutableStateOf(false) }
 
     // Auto update progress while playing
     LaunchedEffect(isPlaying) {
@@ -63,6 +66,10 @@ fun VideoPlayerModal(
         }
     }
 
+    BackHandler(enabled = isFullscreen) {
+        isFullscreen = false
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -70,81 +77,60 @@ fun VideoPlayerModal(
         Column(modifier = Modifier.fillMaxSize()) {
             // Player Canvas Header Box
             Box(
-                modifier = Modifier
+                modifier = if (isFullscreen) Modifier.fillMaxSize() else Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .background(Color.Black)
             ) {
-                // Simulated Anime Video Frame
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.surfaceVariant,
-                                    Color.Black
+                if (selectedServer?.streamUrl?.isNotBlank() == true) {
+                    ExoPlayerView(
+                        url = selectedServer!!.streamUrl,
+                        modifier = Modifier.fillMaxSize(),
+                        isFullscreen = isFullscreen,
+                        playbackSpeed = selectedSpeed,
+                        onFullscreenToggle = { isFullscreen = it }
+                    )
+                } else {
+                    // Simulated Anime Video Frame
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                        Color.Black
+                                    )
                                 )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                            modifier = Modifier.padding(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .padding(16.dp)
-                                    .size(36.dp)
-                            )
-                        }
-                        Text(
-                            text = "${anime.titleAr} - الحلقة ${currentEpisode.episodeNumber}",
-                            color = Color.White.copy(alpha = 0.8f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "السيرفر: ${selectedServer?.nameAr ?: "سيرفر AniFlux FHD"}",
-                            color = AniFluxCyan,
-                            fontSize = 11.sp
-                        )
-                    }
-                    
-                    if (currentProgressSeconds < skipTime + 5f && !skipUsed) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(bottom = 24.dp, end = 24.dp)
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f))
-                                .clickable {
-                                    currentProgressSeconds += skipTime.toFloat()
-                                    skipUsed = true
-                                }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "تخطي",
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                modifier = Modifier.padding(8.dp)
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.FastForward,
-                                    contentDescription = "Skip",
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(16.dp)
+                                    imageVector = if (isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .padding(16.dp)
+                                        .size(36.dp)
                                 )
                             }
+                            Text(
+                                text = "${anime.titleAr} - الحلقة ${currentEpisode.episodeNumber}",
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "السيرفر: ${selectedServer?.nameAr ?: "سيرفر AniFlux FHD"}",
+                                color = AniFluxCyan,
+                                fontSize = 11.sp
+                            )
                         }
                     }
                 }
@@ -189,18 +175,19 @@ fun VideoPlayerModal(
                     }
                 }
 
-                // Bottom Overlay Player Controls
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                // Bottom Overlay Player Controls (Only if simulated)
+                if (selectedServer?.streamUrl?.isBlank() == true || selectedServer == null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                                )
                             )
-                        )
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
                     // Timeline Slider
                     Slider(
                         value = currentProgressSeconds,
@@ -305,6 +292,8 @@ fun VideoPlayerModal(
                 }
             }
 
+            }
+            if (!isFullscreen) {
             // Server Selector Bar (Collapsible)
             AnimatedVisibility(visible = showServerSelector) {
                 Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -372,7 +361,10 @@ fun VideoPlayerModal(
                         val nextEp = allEpisodes.find { it.episodeNumber == currentEpisode.episodeNumber + 1 }
                         if (nextEp != null) {
                             Button(
-                                onClick = { onSelectEpisode(nextEp) },
+                                onClick = { 
+                                    val matchingServer = nextEp.servers.find { it.nameAr == selectedServer?.nameAr } ?: nextEp.servers.randomOrNull()
+                                    onSelectEpisode(nextEp, matchingServer)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
@@ -409,7 +401,10 @@ fun VideoPlayerModal(
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.bounceClick { onSelectEpisode(ep) }
+                                modifier = Modifier.bounceClick { 
+                                    val matchingServer = ep.servers.find { it.nameAr == selectedServer?.nameAr } ?: ep.servers.randomOrNull()
+                                    onSelectEpisode(ep, matchingServer)
+                                }
                             ) {
                                 Text(
                                     text = "${ep.episodeNumber}",
@@ -450,6 +445,7 @@ fun VideoPlayerModal(
                     }
                 }
             }
+            }
+            }
         }
     }
-}

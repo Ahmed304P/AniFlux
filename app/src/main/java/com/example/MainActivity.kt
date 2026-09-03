@@ -480,9 +480,9 @@ fun AniFluxAppShell(
                             onRemoveSaved = { animeId -> viewModel.removeSavedAnime(animeId) },
                             onGenreClick = { genre -> viewModel.openSearchWithGenre(genre) },
                             onStudioClick = { studio -> viewModel.openSearchWithStudio(studio) },
-                            onOpenPlayer = { ep ->
+                            onOpenPlayer = { ep, server ->
                                 viewModel.loadCommentsForEpisode(anime.id, ep.episodeNumber)
-                                viewModel.openPlayer(anime, ep)
+                                viewModel.openPlayer(anime, ep, server)
                             }
                         )
                     }
@@ -507,16 +507,18 @@ fun AniFluxAppShell(
                         val episodes = remember(anime) { viewModel.getEpisodesForAnime(anime) }
 
                         val currentSkipTime by viewModel.skipTime.collectAsStateWithLifecycle()
+                        val activeServer by viewModel.activePlayerServer.collectAsStateWithLifecycle()
                         VideoPlayerModal(
                             skipTime = currentSkipTime,
+                            initialServer = activeServer,
                             anime = anime,
                             currentEpisode = activeEp,
                             allEpisodes = episodes,
                             comments = activeComments,
                             onClose = { viewModel.closePlayer() },
-                            onSelectEpisode = { ep ->
+                            onSelectEpisode = { ep, autoServer ->
                                 viewModel.loadCommentsForEpisode(anime.id, ep.episodeNumber)
-                                viewModel.openPlayer(anime, ep)
+                                viewModel.openPlayer(anime, ep, autoServer)
                             },
                             onAddComment = { content ->
                                 viewModel.addComment(anime.id, activeEp.episodeNumber, "متابع AniFlux", content)
