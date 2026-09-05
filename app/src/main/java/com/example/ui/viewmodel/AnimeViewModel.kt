@@ -91,19 +91,57 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     
     private val _userBanner = MutableStateFlow("https://images.unsplash.com/photo-1542451313056-b7c8e626645f?q=80&w=1000&auto=format&fit=crop")
     val userBanner: StateFlow<String> = _userBanner.asStateFlow()
+    
+    private val _userHandle = MutableStateFlow("")
+    val userHandle: StateFlow<String> = _userHandle.asStateFlow()
+    
+    private val _lastHandleChangeDate = MutableStateFlow(0L)
+    val lastHandleChangeDate: StateFlow<Long> = _lastHandleChangeDate.asStateFlow()
+    
+    private val _userLocation = MutableStateFlow("")
+    val userLocation: StateFlow<String> = _userLocation.asStateFlow()
+    
+    private val _userBirthDate = MutableStateFlow("")
+    val userBirthDate: StateFlow<String> = _userBirthDate.asStateFlow()
+    
+    private val _userJoinDate = MutableStateFlow("2026-09-04")
+    val userJoinDate: StateFlow<String> = _userJoinDate.asStateFlow()
 
-    fun completeLogin(name: String, avatar: String, banner: String) {
+    fun completeLogin(name: String, handle: String, avatar: String, banner: String) {
+        _userName.value = name
+        _userHandle.value = handle
+        _userAvatar.value = avatar
+        _userBanner.value = banner
+        if (_userJoinDate.value.isEmpty()) {
+            val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ENGLISH)
+            _userJoinDate.value = format.format(java.util.Date())
+        }
+        _isLoggedIn.value = true
+    }
+    
+    fun updateProfile(name: String, avatar: String, banner: String, location: String, birthDate: String) {
         _userName.value = name
         _userAvatar.value = avatar
         _userBanner.value = banner
-        _isLoggedIn.value = true
+        _userLocation.value = location
+        _userBirthDate.value = birthDate
+    }
+    
+    fun updateHandle(handle: String) {
+        _userHandle.value = handle
+        _lastHandleChangeDate.value = System.currentTimeMillis()
     }
     
     fun logout() {
         _isLoggedIn.value = false
         _userName.value = ""
+        _userHandle.value = ""
         _userAvatar.value = ""
         _userBanner.value = ""
+        _userLocation.value = ""
+        _userBirthDate.value = ""
+        _userJoinDate.value = ""
+        _lastHandleChangeDate.value = 0L
     }
 
     // UI Navigation State
@@ -117,7 +155,12 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSelectedTab(tabIndex: Int, addToHistory: Boolean = true) {
         if (addToHistory && _selectedTab.value != tabIndex) {
-            tabHistory.add(_selectedTab.value)
+            tabHistory.remove(tabIndex) // Prevent duplicate loops in history
+            if (tabIndex == 0) {
+                tabHistory.clear() // Root tab clears the back stack
+            } else {
+                tabHistory.add(_selectedTab.value)
+            }
             _tabHistorySize.value = tabHistory.size
         }
         _selectedTab.value = tabIndex
@@ -237,13 +280,14 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     sealed class OverlayState {
         val id: String = java.util.UUID.randomUUID().toString()
         data class AnimeDetails(val anime: Anime) : OverlayState()
-        data class Search(val filterState: FilterState) : OverlayState()
+        data class Search(val filterState: FilterState, val title: String? = null) : OverlayState()
     }
 
     private val _overlayStack = MutableStateFlow<List<OverlayState>>(emptyList())
     val overlayStack: StateFlow<List<OverlayState>> = _overlayStack.asStateFlow()
 
     fun openSearch() {
+        resetFilters() // ADDED: Reset filters when opening general search from main screen
         val currentStack = _overlayStack.value.toMutableList()
         if (currentStack.isNotEmpty() && currentStack.last() is OverlayState.Search) {
             return
@@ -257,7 +301,7 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
         resetFilters()
         updateGenreFilter(genre)
         val currentStack = _overlayStack.value.toMutableList()
-        currentStack.add(OverlayState.Search(_filterState.value))
+        currentStack.add(OverlayState.Search(_filterState.value, title = "تصنيف: $genre"))
         _overlayStack.value = currentStack
         _selectedAnimeForDetails.value = null
     }
@@ -266,7 +310,7 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
         resetFilters()
         updateStudioFilter(studio)
         val currentStack = _overlayStack.value.toMutableList()
-        currentStack.add(OverlayState.Search(_filterState.value))
+        currentStack.add(OverlayState.Search(_filterState.value, title = "استوديو: $studio"))
         _overlayStack.value = currentStack
         _selectedAnimeForDetails.value = null
     }

@@ -58,7 +58,7 @@ fun SearchScreenOverlay(
     onAgeRatingFilterChange: (String?) -> Unit,
     onSeasonFilterChange: (String?) -> Unit,
     onResetFilters: () -> Unit
-, isGridMode: Boolean = true) {
+, isGridMode: Boolean = true, title: String? = null) {
     var showFilterSheet by remember { mutableStateOf(false) }
     AnimatedVisibility(
         visible = visible,
@@ -70,7 +70,7 @@ fun SearchScreenOverlay(
         val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
         LaunchedEffect(visible, isDetailScreenOpen) {
-            if (visible && !isDetailScreenOpen) {
+            if (visible && !isDetailScreenOpen && title == null) {
                 kotlinx.coroutines.delay(300) // Wait for transition
                 focusRequester.requestFocus()
                 keyboardController?.show()

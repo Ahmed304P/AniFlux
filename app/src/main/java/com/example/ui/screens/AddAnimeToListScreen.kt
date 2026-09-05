@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +36,7 @@ fun AddAnimeToListScreen(
     onAdd: (String) -> Unit,
     onRemove: (String) -> Unit
 ) {
+    BackHandler { onBack() }
     var searchQuery by remember { mutableStateOf("") }
     
     val searchResults = remember(searchQuery, allAnimeList) {

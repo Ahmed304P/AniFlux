@@ -24,13 +24,29 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+
 
 @Composable
 fun ProfileScreen(
+    userName: String,
+    userHandle: String,
+    userAvatar: String,
+    userBanner: String,
+    userLocation: String,
+    userBirthDate: String,
+    userJoinDate: String,
+    onLogoutClick: () -> Unit,
     onBackClick: () -> Unit,
     onEditClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var showMenu by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     Column(
@@ -45,20 +61,28 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .height(220.dp)
         ) {
-            // Banner Placeholder
+            // Banner
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp)
                     .background(Color.DarkGray)
             ) {
-                // Add icon to indicate it's empty/uploadable
-                Icon(
-                    imageVector = Icons.Default.AddPhotoAlternate,
-                    contentDescription = "Add Banner",
-                    tint = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.align(Alignment.Center).size(48.dp)
-                )
+                if (userBanner.isNotBlank()) {
+                    AsyncImage(
+                        model = userBanner,
+                        contentDescription = "Banner",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = "Add Banner",
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.align(Alignment.Center).size(48.dp)
+                    )
+                }
             }
 
             // Top Actions
@@ -89,14 +113,61 @@ fun ProfileScreen(
                         Icon(Icons.Default.IosShare, contentDescription = "Share", tint = Color.White)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = { /* More */ },
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.5f))
-                            .size(40.dp)
-                    ) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.5f))
+                                .size(40.dp)
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            var showLogoutDialog by remember { mutableStateOf(false) }
+                            
+                            DropdownMenuItem(
+                                text = { 
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.ExitToApp, contentDescription = null, tint = Color.Red, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text("تسجيل الخروج", color = Color.Red, fontWeight = FontWeight.Bold)
+                                    }
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    showLogoutDialog = true
+                                }
+                            )
+                            
+                            if (showLogoutDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showLogoutDialog = false },
+                                    title = { Text("تسجيل الخروج", fontWeight = FontWeight.Bold) },
+                                    text = { Text("هل أنت متأكد أنك تريد تسجيل الخروج من حسابك؟") },
+                                    confirmButton = {
+                                        TextButton(onClick = { 
+                                            showLogoutDialog = false
+                                            onLogoutClick()
+                                        }) {
+                                            Text("نعم، تسجيل الخروج", color = Color.Red, fontWeight = FontWeight.Bold)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showLogoutDialog = false }) {
+                                            Text("إلغاء", color = Color.White)
+                                        }
+                                    },
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    titleContentColor = Color.White,
+                                    textContentColor = Color.LightGray
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -111,12 +182,21 @@ fun ProfileScreen(
                     .background(Color.Gray)
                     .border(3.dp, MaterialTheme.colorScheme.background, CircleShape)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "Add Avatar",
-                    tint = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.align(Alignment.Center).size(48.dp)
-                )
+                if (userAvatar.isNotBlank()) {
+                    AsyncImage(
+                        model = userAvatar,
+                        contentDescription = "Avatar",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Add Avatar",
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.align(Alignment.Center).size(48.dp)
+                    )
+                }
             }
         }
 
@@ -145,14 +225,16 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // User Name & Handle
+            val displayUserName = if (userName.isNotBlank()) userName else "مستخدم جديد"
+            val displayHandle = if (userHandle.isNotBlank()) userHandle else "@new_user"
             Text(
-                text = "اسم المستخدم",
+                text = displayUserName,
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "@username",
+                text = displayHandle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp
             )
@@ -174,13 +256,13 @@ fun ProfileScreen(
             ) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("الموقع", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text(if (userLocation.isNotBlank()) userLocation else "الموقع غير محدد", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
 
                 Spacer(modifier = Modifier.width(16.dp))
 
                 Icon(Icons.Default.Cake, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("تاريخ الميلاد", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text(if (userBirthDate.isNotBlank()) userBirthDate else "تاريخ الميلاد غير محدد", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -190,7 +272,7 @@ fun ProfileScreen(
             ) {
                 Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("تاريخ الانضمام", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                Text(if (userJoinDate.isNotBlank()) "تاريخ الانضمام: $userJoinDate" else "تاريخ الانضمام غير محدد", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
 
             Spacer(modifier = Modifier.height(16.dp))

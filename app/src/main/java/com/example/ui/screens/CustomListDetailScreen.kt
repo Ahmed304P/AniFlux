@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,6 +37,7 @@ fun CustomListDetailScreen(
     onDeleteList: () -> Unit,
     onRemoveAnime: (String) -> Unit
 , isGridMode: Boolean = true) {
+    BackHandler { onBack() }
     var isLoading by remember { mutableStateOf(true) }
     var visibleAnimeList by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var showMenu by remember { mutableStateOf(false) }

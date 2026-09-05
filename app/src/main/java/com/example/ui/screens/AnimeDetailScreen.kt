@@ -201,7 +201,7 @@ fun AnimeDetailScreen(
                 when (targetIndex) {
                     0 -> AnimeDetailsTabContent(anime = anime, isSaved = isSaved, savedStatus = savedStatus, userRating = userRating, onOpenMyListOptions = { showMyListSheet = true }, onRateClick = { showRatingDialog = true }, onGenreClick = onGenreClick, onStudioClick = onStudioClick, lazyListState = detailsListState)
                     1 -> AnimeEpisodesTabContent(episodes, watchedEpisodes, onToggleWatched, onEpisodeClick = { episodeActionSheet = it })
-                    2 -> AnimeStatsTabContent(anime, isSaved, savedStatus)
+                    2 -> AnimeStatsTabContent(anime, isSaved, savedStatus, userRating)
                     3 -> AnimeCharactersTabContent(anime)
                 }
             }
@@ -569,7 +569,7 @@ fun AnimeDetailsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?,
         }
         
         item {
-            ContentRatingSection()
+            ContentRatingSection(anime)
         }
         
         item {
@@ -864,8 +864,43 @@ fun InfoItem(title: String, value: String, isChip: Boolean = false, modifier: Mo
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun ContentRatingSection() {
+fun ContentRatingSection(anime: Anime) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.getSharedPreferences("anime_content_ratings", android.content.Context.MODE_PRIVATE)
+
+    data class ContentRatingCategory(
+        val title: String,
+        val defaultOption: String,
+        val baseCount: Int
+    )
+
+    val hash = anime.id.hashCode().toLong()
+    val categories = remember {
+        listOf(
+            ContentRatingCategory("عنف ودموية", if (hash % 2L == 0L) "شديد" else "خفيف", 89 + (hash % 20).toInt()),
+            ContentRatingCategory("ألفاظ نابية", if (hash % 3L == 0L) "متوسط" else "لا يوجد", 77 + (hash % 30).toInt()),
+            ContentRatingCategory("مشاهد غير لائقة", if (hash % 4L == 0L) "شديد" else "لا يوجد", 162 + (hash % 40).toInt()),
+            ContentRatingCategory("مشاهد مخيفة او صادمة", if (hash % 5L == 0L) "متوسط" else "شديد", 87 + (hash % 25).toInt()),
+            ContentRatingCategory("مخدرات وكحول وتدخين", if (hash % 2L != 0L) "خفيف" else "لا يوجد", 72 + (hash % 30).toInt())
+        )
+    }
+
+    var selectedCategory by remember { mutableStateOf<ContentRatingCategory?>(null) }
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+
+    fun getColorForOption(option: String): Color {
+        return when (option) {
+            "لا يوجد" -> Color(0xFF2196F3) // Blue
+            "خفيف" -> Color(0xFF4CAF50) // Green
+            "متوسط" -> Color(0xFFFF9800) // Orange
+            "شديد" -> Color(0xFFF44336) // Red
+            else -> Color.Gray
+        }
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp),
@@ -884,30 +919,143 @@ fun ContentRatingSection() {
                     .padding(bottom = 12.dp),
                 textAlign = TextAlign.End
             )
-            
-            RatingRow("عنف ودموية", "شديد (27)", MaterialTheme.colorScheme.primary)
-            RatingRow("ألفاظ نابية", "لا يوجد (23)", AniFluxGreen)
-            RatingRow("مشاهد غير لائقة", "لا يوجد (36)", AniFluxGreen)
-            RatingRow("مشاهد مخيفة او صادمة", "شديد (21)", MaterialTheme.colorScheme.primary)
-            RatingRow("مخدرات وكحول وتدخين", "لا يوجد (19)", AniFluxGreen)
+
+            categories.forEach { category ->
+                // Read from SharedPreferences
+                val votedOption = prefs.getString("${anime.id}_${category.title}_vote", null)
+                val hasVoted = prefs.getBoolean("${anime.id}_${category.title}_has_voted", false)
+                
+                // Determine current predominant and count
+                val currentOption = votedOption ?: category.defaultOption
+                val currentCount = category.baseCount + if (votedOption != null) 1 else 0
+                val currentColor = getColorForOption(currentOption)
+                
+                RatingRow(
+                    title = category.title,
+                    value = "$currentOption ($currentCount)",
+                    color = currentColor,
+                    hasVoted = hasVoted,
+                    onAddClick = {
+                        if (!hasVoted) {
+                            selectedCategory = category
+                            showBottomSheet = true
+                        }
+                    },
+                    dummyTrigger = refreshTrigger
+                )
+            }
+        }
+    }
+
+    if (showBottomSheet && selectedCategory != null) {
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { showBottomSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            val cat = selectedCategory!!
+            val votedOption = prefs.getString("${anime.id}_${cat.title}_vote", null)
+            val currentOption = votedOption ?: cat.defaultOption
+            val currentCount = cat.baseCount + if (votedOption != null) 1 else 0
+            val currentColor = getColorForOption(currentOption)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(bottom = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = cat.title,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = currentOption,
+                    color = currentColor,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = "عدد المصوتين $currentCount",
+                    color = Color.Gray,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
+
+                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = "هل يحتوي على ${cat.title}؟",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
+
+                val options = listOf("لا يوجد", "خفيف", "متوسط", "شديد")
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    options.forEach { option ->
+                        val optColor = getColorForOption(option)
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = {
+                                prefs.edit()
+                                    .putBoolean("${anime.id}_${cat.title}_has_voted", true)
+                                    .putString("${anime.id}_${cat.title}_vote", option)
+                                    .apply()
+                                refreshTrigger++ // trigger recomposition
+                                showBottomSheet = false
+                                android.widget.Toast.makeText(context, "تم تسجيل تقييمك بنجاح", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, optColor),
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                contentColor = optColor,
+                                containerColor = Color.Transparent
+                            ),
+                            contentPadding = PaddingValues(vertical = 12.dp, horizontal = 0.dp)
+                        ) {
+                            Text(text = option, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-fun RatingRow(title: String, value: String, color: Color) {
+fun RatingRow(title: String, value: String, color: Color, hasVoted: Boolean, onAddClick: () -> Unit, dummyTrigger: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Default.Add, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !hasVoted,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut()
+        ) {
+            IconButton(
+                onClick = onAddClick,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Rating", tint = Color.Gray, modifier = Modifier.size(20.dp))
+            }
+        }
         Spacer(modifier = Modifier.weight(1f))
         Text(text = value, color = Color.Gray, fontSize = 12.sp)
         Spacer(modifier = Modifier.width(8.dp))
         Text(text = title, color = Color.LightGray, fontSize = 14.sp)
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Box(modifier = Modifier
             .size(8.dp, 24.dp)
             .clip(RoundedCornerShape(2.dp))
@@ -1046,17 +1194,17 @@ fun AnimeEpisodesTabContent(episodes: List<Episode>, watchedEpisodes: Set<Int>, 
 }
 }
 @Composable
-fun AnimeStatsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?) {
-    // Generate pseudo-random base stats derived from anime.id
+fun AnimeStatsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?, userRating: Int?) {
+    // Global Stats Simulation (Ready for Firebase)
     val hash = anime.id.hashCode().toLong()
-    val baseFavorites = 5071 + (hash % 100).toInt()
-    val baseWatching = 517 + (hash % 50).toInt()
-    val basePlan = 6229 + (hash % 200).toInt()
-    val baseCompleted = 2200 + (hash % 100).toInt()
-    val baseHold = 239 + (hash % 30).toInt()
-    val baseDropped = 415 + (hash % 40).toInt()
+    val baseFavorites = 4818 + (hash % 100).toInt()
+    val baseWatching = 418 + (hash % 50).toInt()
+    val basePlan = 6018 + (hash % 200).toInt()
+    val baseCompleted = 2018 + (hash % 100).toInt()
+    val baseHold = 178 + (hash % 30).toInt()
+    val baseDropped = 398 + (hash % 40).toInt()
 
-    // Add local user's status to the base numbers
+    // Add local user's status to the base numbers (Independent from Detailed Ratings)
     val favorites = baseFavorites + if (savedStatus == "FAVORITE") 1 else 0
     val watching = baseWatching + if (savedStatus == "WATCHING") 1 else 0
     val plan = basePlan + if (savedStatus == "PLAN_TO_WATCH") 1 else 0
@@ -1065,68 +1213,134 @@ fun AnimeStatsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?) {
     val dropped = baseDropped + if (savedStatus == "DROPPED") 1 else 0
 
     val stats = listOf(
-        Pair("أنمياتي المفضلة", favorites) to Color(0xFF0277BD),
-        Pair("اشاهدها حاليا", watching) to Color(0xFF388E3C),
-        Pair("ارغب بمشاهدتها", plan) to Color(0xFF1976D2),
-        Pair("تم مشاهدتها", completed) to Color(0xFF7B1FA2),
-        Pair("اكملها لاحقا", hold) to Color(0xFFFBC02D),
-        Pair("لا ارغب بمشاهدتها", dropped) to Color(0xFFD32F2F)
+        Pair("أنمياتي المفضلة", favorites) to Color(0xFF64B5F6),
+        Pair("اشاهدها حاليا", watching) to Color(0xFF81C784),
+        Pair("ارغب بمشاهدتها", plan) to Color(0xFFE57373),
+        Pair("تم مشاهدتها", completed) to Color(0xFFBA68C8),
+        Pair("اكملها لاحقا", hold) to Color(0xFFFFCA28),
+        Pair("لا ارغب بمشاهدتها", dropped) to Color(0xFFF06292)
     )
+
+    // Global Ratings Simulation (Independent of user interaction)
+    val storyAvg = 9.50f - (Math.abs(hash % 15)) / 10f
+    val charAvg = 9.20f - (Math.abs((hash / 2) % 15)) / 10f
+    val artAvg = 9.80f - (Math.abs((hash / 3) % 15)) / 10f
+
+    // Matching app native colors
+    val cardColor = androidx.compose.material3.MaterialTheme.colorScheme.surface
+    val borderColor = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val onSurface = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        // Card 1: Detailed Ratings
         item {
-            Text("التصويتات", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            // Bar chart for ratings (1 to 10)
-            Row(
-                modifier = Modifier.fillMaxWidth().height(150.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
+            androidx.compose.material3.Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = cardColor),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, borderColor)
             ) {
-                for (i in 1..10) {
-                    val heightRatio = if (i == 10) 1f else (Math.abs(hash % (i * 10)) / 100f).coerceIn(0.1f, 0.5f)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                        Box(
-                            modifier = Modifier
-                                .width(20.dp)
-                                .fillMaxHeight(heightRatio)
-                                .background(Color(0xFF1976D2), RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "$i", color = Color.White, fontSize = 12.sp)
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "متوسط تقييم القصة، الشخصيات، والرسم",
+                        color = onSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        RatingColumnUI("القصة", String.format(java.util.Locale.US, "%.2f", storyAvg), onSurfaceVariant)
+                        RatingColumnUI("الشخصيات", String.format(java.util.Locale.US, "%.2f", charAvg), onSurfaceVariant)
+                        RatingColumnUI("الرسم", String.format(java.util.Locale.US, "%.2f", artAvg), onSurfaceVariant)
                     }
                 }
             }
         }
+
+        // Card 2: Donut Chart
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            androidx.compose.material3.Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = cardColor),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, borderColor)
             ) {
-                // Circular pseudo-pie chart
-                Box(
-                    modifier = Modifier.size(120.dp).border(12.dp, Color(0xFFD32F2F), CircleShape),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(modifier = Modifier.size(120.dp).padding(12.dp).border(12.dp, Color(0xFF1976D2), CircleShape))
-                }
-                
-                Column(modifier = Modifier.weight(1f).padding(start = 24.dp)) {
-                    stats.forEach { (pair, color) ->
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                            Box(modifier = Modifier.size(12.dp).background(color))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "${pair.first} : ${pair.second}", color = Color.LightGray, fontSize = 12.sp)
+                    // Top side: Donut Chart (Medium size)
+                    Box(modifier = Modifier.size(120.dp).padding(bottom = 20.dp)) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                            var startAngle = -90f
+                            val total = stats.sumOf { it.first.second.toDouble() }.toFloat()
+                            val strokeWidth = 28f // Medium stroke
+                            stats.forEach { (pair, color) ->
+                                val sweepAngle = (pair.second / total) * 360f
+                                if (sweepAngle > 0) {
+                                    drawArc(
+                                        color = color,
+                                        startAngle = startAngle,
+                                        sweepAngle = sweepAngle,
+                                        useCenter = false,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                            width = strokeWidth
+                                        )
+                                    )
+                                }
+                                startAngle += sweepAngle
+                            }
                         }
+                    }
+
+                    // Bottom side: Legend
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        stats.forEach { (pair, color) ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()
+                            ) {
+                                Box(modifier = Modifier.size(10.dp).background(color, RoundedCornerShape(2.dp)))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = pair.first,
+                                    color = onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
+                                Text(
+                                    text = pair.second.toString(),
+                                    color = onSurface,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
-}
-}
-}
-}
+
+@Composable
+fun RatingColumnUI(title: String, value: String, textColor: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, color = textColor, fontSize = 12.sp) 
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(value, color = Color(0xFFFFC107), fontSize = 18.sp, fontWeight = FontWeight.Bold) 
+    }
 }
 @Composable
 fun AnimeCharactersTabContent(anime: Anime) {

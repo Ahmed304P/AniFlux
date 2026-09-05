@@ -125,8 +125,12 @@ fun AniFluxAppShell(
 
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
     val userName by viewModel.userName.collectAsStateWithLifecycle()
+    val userHandle by viewModel.userHandle.collectAsStateWithLifecycle()
     val userAvatar by viewModel.userAvatar.collectAsStateWithLifecycle()
     val userBanner by viewModel.userBanner.collectAsStateWithLifecycle()
+    val userLocation by viewModel.userLocation.collectAsStateWithLifecycle()
+    val userBirthDate by viewModel.userBirthDate.collectAsStateWithLifecycle()
+    val userJoinDate by viewModel.userJoinDate.collectAsStateWithLifecycle()
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -353,28 +357,55 @@ fun AniFluxAppShell(
                     )
 
                     15 -> ProfileScreen(
-                        onBackClick = { viewModel.setSelectedTab(0, addToHistory = false) },
+                        userName = userName,
+                        userHandle = userHandle,
+                        userAvatar = userAvatar,
+                        userBanner = userBanner,
+                        userLocation = userLocation,
+                        userBirthDate = userBirthDate,
+                        userJoinDate = userJoinDate,
+                        onLogoutClick = {
+                            viewModel.logout()
+                            viewModel.setSelectedTab(0, addToHistory = false)
+                        },
+                        onBackClick = { if (!viewModel.popTabStack()) viewModel.setSelectedTab(0, addToHistory = false) },
                         onEditClick = { viewModel.setSelectedTab(16) }
                     )
 
-                    16 -> EditProfileScreen(
-                        onBackClick = { viewModel.setSelectedTab(15) }
-                    )
+                    16 -> {
+                        val lastChange by viewModel.lastHandleChangeDate.collectAsStateWithLifecycle()
+                        EditProfileScreen(
+                            currentName = userName,
+                            currentHandle = userHandle,
+                            currentAvatar = userAvatar,
+                            currentBanner = userBanner,
+                            currentLocation = userLocation,
+                            currentBirthDate = userBirthDate,
+                            lastHandleChangeDate = lastChange,
+                            onSaveProfile = { name, avatar, banner, loc, bdate ->
+                                viewModel.updateProfile(name, avatar, banner, loc, bdate)
+                            },
+                            onSaveHandle = { handle ->
+                                viewModel.updateHandle(handle)
+                            },
+                            onBackClick = { if (!viewModel.popTabStack()) viewModel.setSelectedTab(15, addToHistory = false) }
+                        )
+                    }
                     
                     17 -> LoginScreen(
-                        onBack = { viewModel.setSelectedTab(0, addToHistory = false) },
-                        onLoginSuccess = { viewModel.setSelectedTab(18) },
-                        onAdminBackdoor = { viewModel.setSelectedTab(19) }
+                        onBack = { if (!viewModel.popTabStack()) viewModel.setSelectedTab(0, addToHistory = false) },
+                        onLoginSuccess = { viewModel.setSelectedTab(18, addToHistory = false) },
+                        onAdminBackdoor = { viewModel.setSelectedTab(19, addToHistory = false) }
                     )
                     18 -> CompleteProfileScreen(
-                        onComplete = { name, avatar, banner ->
-                            viewModel.completeLogin(name, avatar, banner)
-                            viewModel.setSelectedTab(0, addToHistory = false)
+                        onComplete = { name, handle, avatar, banner ->
+                            viewModel.completeLogin(name, handle, avatar, banner)
+                            viewModel.setSelectedTab(15, addToHistory = false) // Navigate to ProfileScreen (15) instead of Home
                         }
                     )
                     19 -> AdminPasswordScreen(
                         onBack = { viewModel.popTabStack() },
-                        onSuccess = { viewModel.setSelectedTab(20) }
+                        onSuccess = { viewModel.setSelectedTab(20, addToHistory = false) }
                     )
                     20 -> MasterAdminDashboardScreen(
                         onBack = { viewModel.popTabStack() },
@@ -400,6 +431,9 @@ fun AniFluxAppShell(
                     )
                 }
 
+                val currentSearchOverlay = overlayStack.lastOrNull { it is com.example.ui.viewmodel.AnimeViewModel.OverlayState.Search } as? com.example.ui.viewmodel.AnimeViewModel.OverlayState.Search
+                val searchTitle = currentSearchOverlay?.title
+
                 SearchScreenOverlay(
                     visible = isSearchOverlayVisible,
                     isDetailScreenOpen = selectedAnimeDetails != null,
@@ -421,7 +455,8 @@ fun AniFluxAppShell(
                     onAgeRatingFilterChange = { viewModel.updateAgeRatingFilter(it) },
                     onSeasonFilterChange = { viewModel.updateSeasonFilter(it) },
                     onResetFilters = { viewModel.resetFilters() },
-                    isGridMode = isGridMode
+                    isGridMode = isGridMode,
+                    title = searchTitle
                 )
 
 

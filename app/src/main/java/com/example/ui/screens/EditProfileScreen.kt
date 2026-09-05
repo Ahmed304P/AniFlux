@@ -1,14 +1,16 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import com.example.ui.components.bounceClick
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowForward
@@ -18,24 +20,112 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.ui.components.bounceClick
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditProfileScreen(
+    currentName: String,
+    currentHandle: String,
+    currentAvatar: String,
+    currentBanner: String,
+    currentLocation: String,
+    currentBirthDate: String,
+    lastHandleChangeDate: Long,
+    onSaveProfile: (String, String, String, String, String) -> Unit,
+    onSaveHandle: (String) -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    
+    var fullName by remember { mutableStateOf(currentName) }
+    var handle by remember { mutableStateOf(currentHandle.removePrefix("@")) }
+    var location by remember { mutableStateOf(currentLocation) }
+    var birthDate by remember { mutableStateOf(currentBirthDate) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    
+    var bannerUri by remember { mutableStateOf<Uri?>(null) }
+    var avatarUri by remember { mutableStateOf<Uri?>(null) }
+    
+    val bannerPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri -> if (uri != null) bannerUri = uri }
+    )
 
-    var fullName by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var bio by remember { mutableStateOf("") }
-    var location by remember { mutableStateOf("") }
-    var birthDate by remember { mutableStateOf("") }
+    val avatarPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri -> if (uri != null) avatarUri = uri }
+    )
+
+    val takenUsernames = listOf("admin", "test", "mohammed", "ahmed", "ali", "user")
+    
+    var handleError by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
+    
+    val coroutineScope = rememberCoroutineScope()
+    
+    val currentTime = System.currentTimeMillis()
+    val thirtyDaysMillis = 30L * 24 * 60 * 60 * 1000
+    val canChangeHandle = (currentTime - lastHandleChangeDate) >= thirtyDaysMillis
+    
+    val remainingDays = if (!canChangeHandle) {
+        val diff = thirtyDaysMillis - (currentTime - lastHandleChangeDate)
+        (diff / (1000 * 60 * 60 * 24)).toInt() + 1
+    } else 0
+
+    fun handleSave() {
+        if (fullName.isBlank()) {
+            return
+        }
+        
+        coroutineScope.launch {
+            isSaving = true
+            handleError = null
+            
+            // Check handle change
+            val newHandle = handle.lowercase().trim()
+            val currentHandleNoAt = currentHandle.removePrefix("@").lowercase().trim()
+            
+            if (newHandle != currentHandleNoAt && canChangeHandle) {
+                if (newHandle.isBlank()) {
+                    handleError = "يرجى إدخال اسم المستخدم"
+                    isSaving = false
+                    return@launch
+                }
+                val handleRegex = "^[a-zA-Z0-9_]+$".toRegex()
+                if (!handleRegex.matches(newHandle)) {
+                    handleError = "يجب أن يحتوي على أحرف إنجليزية وأرقام فقط"
+                    isSaving = false
+                    return@launch
+                }
+                
+                delay(800) // Simulate network
+                if (takenUsernames.contains(newHandle)) {
+                    handleError = "اسم المستخدم هذا موجود بالفعل"
+                    isSaving = false
+                    return@launch
+                }
+                
+                onSaveHandle("@$newHandle")
+            }
+            
+            val finalBanner = bannerUri?.toString() ?: currentBanner
+            val finalAvatar = avatarUri?.toString() ?: currentAvatar
+            
+            onSaveProfile(fullName.trim(), finalAvatar, finalBanner, location.trim(), birthDate)
+            isSaving = false
+            onBackClick()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -62,8 +152,12 @@ fun EditProfileScreen(
                 }
             },
             actions = {
-                TextButton(onClick = { onBackClick() }) {
-                    Text("حفظ", color = MaterialTheme.colorScheme.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(end = 16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                } else {
+                    TextButton(onClick = { handleSave() }) {
+                        Text("حفظ", color = MaterialTheme.colorScheme.primary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
@@ -71,7 +165,6 @@ fun EditProfileScreen(
                 titleContentColor = Color.White
             )
         )
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -89,16 +182,27 @@ fun EditProfileScreen(
                         .fillMaxWidth()
                         .height(140.dp)
                         .background(Color.DarkGray)
-                        .bounceClick { /* Pick Banner Image */ }
+                        .bounceClick { bannerPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AddPhotoAlternate,
-                        contentDescription = "Add Banner",
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(40.dp)
-                    )
+                    if (bannerUri != null || currentBanner.isNotBlank()) {
+                        AsyncImage(
+                            model = bannerUri ?: currentBanner,
+                            contentDescription = "Banner",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = "Add Banner",
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
                 }
 
                 // Avatar
@@ -110,16 +214,27 @@ fun EditProfileScreen(
                         .clip(CircleShape)
                         .background(Color.Gray)
                         .border(3.dp, MaterialTheme.colorScheme.background, CircleShape)
-                        .bounceClick { /* Pick Avatar Image */ }
+                        .bounceClick { avatarPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AddPhotoAlternate,
-                        contentDescription = "Add Avatar",
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(32.dp)
-                    )
+                    if (avatarUri != null || currentAvatar.isNotBlank()) {
+                        AsyncImage(
+                            model = avatarUri ?: currentAvatar,
+                            contentDescription = "Avatar",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = "Add Avatar",
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
             }
 
@@ -137,27 +252,26 @@ fun EditProfileScreen(
                     value = fullName,
                     onValueChange = { if (it.length <= 25) fullName = it },
                     placeholder = "",
-                    helperText = "يمكنك تغيير الاسم مرة واحدة في الشهر",
                     charCount = "${fullName.length}/25"
                 )
 
                 // Username
                 ProfileTextField(
                     label = "اسم المستخدم",
-                    value = username,
-                    onValueChange = { username = it },
-                    placeholder = "@",
-                )
-
-                // Bio
-                ProfileTextField(
-                    label = "النبذة التعريفية",
-                    value = bio,
-                    onValueChange = { if (it.length <= 160) bio = it },
+                    value = handle,
+                    onValueChange = { 
+                        if (canChangeHandle) {
+                            handle = it
+                            if (handleError != null) handleError = null
+                        }
+                    },
                     placeholder = "",
-                    charCount = "${bio.length}/160"
+                    helperText = if (!canChangeHandle) "يمكنك تغيير اسم المستخدم بعد $remainingDays يوماً" else "يمكن تغييره مرة كل 30 يوم",
+                    errorText = handleError,
+                    enabled = canChangeHandle,
+                    prefix = "@"
                 )
-
+                
                 // Location
                 ProfileTextField(
                     label = "الموقع الجغرافي",
@@ -166,17 +280,72 @@ fun EditProfileScreen(
                     placeholder = "",
                     charCount = "${location.length}/30"
                 )
-
+                
                 // Birth Date
-                ProfileTextField(
-                    label = "تاريخ الميلاد",
-                    value = birthDate,
-                    onValueChange = { birthDate = it },
-                    placeholder = "YYYY-MM-DD",
-                    keyboardType = KeyboardType.Number
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    ProfileTextField(
+                        label = "تاريخ الميلاد",
+                        value = birthDate.ifEmpty { "غير محدد" },
+                        onValueChange = {},
+                        placeholder = "YYYY-MM-DD",
+                        enabled = true
+                    )
+                    // Invisible overlay to intercept clicks
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null
+                            ) { showDatePicker = true }
+                            .background(Color.Transparent)
+                    )
+                }
                 
                 Spacer(modifier = Modifier.height(40.dp))
+            }
+        }
+        
+        if (showDatePicker) {
+            val datePickerState = rememberDatePickerState()
+            DatePickerDialog(
+                onDismissRequest = { showDatePicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ENGLISH)
+                            birthDate = format.format(java.util.Date(millis))
+                        }
+                        showDatePicker = false
+                    }) {
+                        Text("موافق", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDatePicker = false }) {
+                        Text("إلغاء", color = Color.White)
+                    }
+                },
+            ) {
+                DatePicker(
+                    state = datePickerState,
+                    colors = DatePickerDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = Color.White,
+                        headlineContentColor = Color.White,
+                        weekdayContentColor = Color.LightGray,
+                        subheadContentColor = Color.LightGray,
+                        yearContentColor = Color.White,
+                        currentYearContentColor = MaterialTheme.colorScheme.primary,
+                        selectedYearContentColor = Color.White,
+                        selectedYearContainerColor = MaterialTheme.colorScheme.primary,
+                        dayContentColor = Color.White,
+                        selectedDayContentColor = Color.White,
+                        selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                        todayContentColor = MaterialTheme.colorScheme.primary,
+                        todayDateBorderColor = MaterialTheme.colorScheme.primary
+                    )
+                )
             }
         }
     }
@@ -189,8 +358,11 @@ fun ProfileTextField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     helperText: String? = null,
+    errorText: String? = null,
     charCount: String? = null,
-    keyboardType: KeyboardType = KeyboardType.Text
+    keyboardType: KeyboardType = KeyboardType.Text,
+    enabled: Boolean = true,
+    prefix: String? = null
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth()) {
         Text(
@@ -204,44 +376,55 @@ fun ProfileTextField(
             value = value,
             onValueChange = onValueChange,
             placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            prefix = { if (prefix != null) Text(prefix, color = if(enabled) MaterialTheme.colorScheme.onSurface else Color.Gray, fontWeight = FontWeight.Bold) },
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.White,
-                unfocusedIndicatorColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledContainerColor = Color.Transparent,
+                focusedIndicatorColor = if (errorText != null) MaterialTheme.colorScheme.error else Color.White,
+                unfocusedIndicatorColor = if (errorText != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledIndicatorColor = Color.DarkGray,
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
-                cursorColor = MaterialTheme.colorScheme.primary
+                disabledTextColor = Color.Gray,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                errorIndicatorColor = MaterialTheme.colorScheme.error
             ),
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            singleLine = true,
+            enabled = enabled,
+            isError = errorText != null
         )
-
-        if (helperText != null || charCount != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                if (charCount != null) {
-                    Text(
-                        text = charCount,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.sp
-                    )
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
-                }
-                
-                if (helperText != null) {
-                    Text(
-                        text = helperText,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.sp
-                    )
-                }
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            if (charCount != null) {
+                Text(
+                    text = charCount,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp
+                )
+            } else {
+                Spacer(modifier = Modifier.width(1.dp))
+            }
+            
+            if (errorText != null) {
+                Text(
+                    text = errorText,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 10.sp
+                )
+            } else if (helperText != null) {
+                Text(
+                    text = helperText,
+                    color = if (!enabled && prefix == "@") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp
+                )
             }
         }
     }
