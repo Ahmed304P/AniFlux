@@ -1,0 +1,1 @@
+{"status":"success","data":{"url":"https://tmpfiles.org/w6w8kUzHWpx6/app-debug.apk"}}

@@ -1,4 +1,5 @@
 package com.example.ui.components
+import androidx.compose.runtime.saveable.rememberSaveable
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -16,6 +17,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,7 +47,7 @@ fun FilterBottomSheet(
     onSeasonFilterChange: (String?) -> Unit,
     onResetFilters: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Extract unique dynamic values
     val availableYears = remember(allAnime) { allAnime.map { it.year }.distinct().sortedDescending() }
@@ -63,6 +66,7 @@ fun FilterBottomSheet(
     ) {
         Column(
             modifier = Modifier
+                .fillMaxHeight(0.9f)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .navigationBarsPadding(),
@@ -76,81 +80,69 @@ fun FilterBottomSheet(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            LazyColumn(
+            val scrollState = rememberScrollState()
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false),
+                    .weight(1f, fill = false)
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Status Section
-                item {
-                    FilterSection(
+                FilterSection(
                         title = "الحالة",
                         items = availableStatuses,
                         selectedItem = filterState.selectedStatus,
                         onItemSelected = { onStatusFilterChange(it) }
-                    )
-                }
+                )
 
                 // Type Section
-                item {
-                    FilterSection(
+                FilterSection(
                         title = "نوع الانمي",
                         items = availableTypes,
                         selectedItem = filterState.selectedType,
                         onItemSelected = { onTypeFilterChange(it) }
-                    )
-                }
+                )
 
                 // Season Section
-                item {
-                    FilterSection(
+                FilterSection(
                         title = "الموسم",
                         items = availableSeasons,
                         selectedItem = filterState.selectedSeason,
                         onItemSelected = { onSeasonFilterChange(it) }
-                    )
-                }
+                )
 
                 // Age Rating Section
-                item {
-                    FilterSection(
+                FilterSection(
                         title = "العمر",
                         items = availableAgeRatings,
                         selectedItem = filterState.selectedAgeRating,
                         onItemSelected = { onAgeRatingFilterChange(it) }
-                    )
-                }
+                )
 
                 // Year Section (Expandable)
-                item {
-                    ExpandableFilterSection(
+                ExpandableFilterSection(
                         title = "السنة",
                         items = availableYears.map { it.toString() },
                         selectedItem = filterState.selectedYear?.toString(),
                         onItemSelected = { onYearFilterChange(it?.toIntOrNull()) }
-                    )
-                }
+                )
 
                 // Studio Section (Expandable)
-                item {
-                    ExpandableFilterSection(
+                ExpandableFilterSection(
                         title = "الاستوديو",
                         items = availableStudios,
                         selectedItem = filterState.selectedStudio,
                         onItemSelected = { onStudioFilterChange(it) }
-                    )
-                }
+                )
 
                 // Genre Section (Expandable)
-                item {
-                    ExpandableFilterSection(
+                ExpandableFilterSection(
                         title = "النوع",
                         items = availableGenres,
                         selectedItem = filterState.selectedGenre,
                         onItemSelected = { onGenreFilterChange(it) }
-                    )
-                }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -239,7 +231,7 @@ fun ExpandableFilterSection(
     selectedItem: String?,
     onItemSelected: (String?) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier

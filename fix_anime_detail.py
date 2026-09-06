@@ -1,104 +1,34 @@
 import re
 
-with open("app/src/main/java/com/example/ui/screens/AnimeDetailScreen.kt", "r") as f:
+with open('app/src/main/java/com/example/ui/screens/AnimeDetailScreen.kt', 'r') as f:
     content = f.read()
 
-# Remove Trailer from Characters Tab
-trailer_regex = r'        if \(anime\.trailerUrl\.isNotBlank\(\)\) \{\n            item \{\n                Text\("العرض الدعائي".*?\}\n            \}\n        \}'
-content = re.sub(trailer_regex, '', content, flags=re.DOTALL)
-
-# Redesign Characters and Staff cards
-new_characters_tab = """fun AnimeCharactersTabContent(anime: Anime) {
-    val hasCharacters = anime.characters.isNotEmpty()
-    val hasStaff = anime.staff.isNotEmpty()
+# 1. Update RelatedAnimeSection signature and logic
+old_section = """fun RelatedAnimeSection(anime: Anime, onRelatedClick: (RelatedAnime) -> Unit) {
+    var relatedAnimeList by remember { mutableStateOf<List<RelatedAnime>?>(null) }
     
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        item {
-            Text("الشخصيات", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            if (hasCharacters) {
-                LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(anime.characters) { person ->
-                        Box(modifier = Modifier.width(110.dp).height(150.dp).clip(RoundedCornerShape(8.dp)).background(Color.DarkGray)) {
-                            AsyncImage(
-                                model = person.imageUrl,
-                                contentDescription = person.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(0.5f)
-                                    .align(Alignment.BottomCenter)
-                                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
-                                    ))
-                            )
-                            Text(
-                                text = person.name,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp, start = 4.dp, end = 4.dp)
-                            )
-                        }
-                    }
-                }
-            } else {
-                Text("لا يوجد شخصيات حتى الان", color = Color.Gray, fontSize = 14.sp)
-            }
-        }
-        
-        item {
-            Text("طاقم العمل", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            if (hasStaff) {
-                LazyRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(anime.staff) { person ->
-                        Box(modifier = Modifier.width(110.dp).height(150.dp).clip(RoundedCornerShape(8.dp)).background(Color.DarkGray)) {
-                            AsyncImage(
-                                model = person.imageUrl,
-                                contentDescription = person.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(0.5f)
-                                    .align(Alignment.BottomCenter)
-                                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
-                                    ))
-                            )
-                            Text(
-                                text = person.name,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp, start = 4.dp, end = 4.dp)
-                            )
-                        }
-                    }
-                }
-            } else {
-                Text("لا يوجد طاقم عمل حتى الان", color = Color.Gray, fontSize = 14.sp)
-            }
-        }
-    }
-}"""
+    LaunchedEffect(anime.titleEn) {
+        relatedAnimeList = null
+        relatedAnimeList = AniListService.getAnimeRelations(anime.titleEn)
+    }"""
 
-content = re.sub(r'fun AnimeCharactersTabContent\(anime: Anime\) \{.*?(?=\n\n@Composable\nfun CharacterCard)', new_characters_tab, content, flags=re.DOTALL)
+new_section = """fun RelatedAnimeSection(anime: Anime, allAnime: List<Anime>, onRelatedClick: (RelatedAnime) -> Unit) {
+    var relatedAnimeList by remember { mutableStateOf<List<RelatedAnime>?>(null) }
+    
+    LaunchedEffect(anime.titleEn) {
+        relatedAnimeList = null
+        val fetched = AniListService.getAnimeRelations(anime.titleEn)
+        // Filter out anime that are NOT added in the app (i.e. check if title matches any in allAnime)
+        val available = fetched.filter { related ->
+            allAnime.any { it.titleEn.equals(related.titleEn, ignoreCase = true) || it.titleAr.equals(related.titleAr, ignoreCase = true) }
+        }
+        relatedAnimeList = available
+    }"""
 
-with open("app/src/main/java/com/example/ui/screens/AnimeDetailScreen.kt", "w") as f:
+content = content.replace(old_section, new_section)
+
+# 2. Update RelatedAnimeSection call in AnimeDetailScreen
+content = content.replace("RelatedAnimeSection(anime, onRelatedAnimeClick)", "RelatedAnimeSection(anime, allAnime, onRelatedAnimeClick)")
+
+with open('app/src/main/java/com/example/ui/screens/AnimeDetailScreen.kt', 'w') as f:
     f.write(content)

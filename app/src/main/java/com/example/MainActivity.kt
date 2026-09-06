@@ -495,13 +495,49 @@ fun AniFluxAppShell(
                     }
                     val currentAnime = selectedAnimeDetails ?: lastAnime
                     if (currentAnime != null) {
-                        val anime = currentAnime
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = currentAnime,
+                            transitionSpec = {
+                                (androidx.compose.animation.slideInHorizontally(
+                                    initialOffsetX = { fullWidth -> fullWidth },
+                                    animationSpec = androidx.compose.animation.core.tween(300)
+                                ) + androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300))).togetherWith(
+                                androidx.compose.animation.slideOutHorizontally(
+                                    targetOffsetX = { fullWidth -> -fullWidth },
+                                    animationSpec = androidx.compose.animation.core.tween(300)
+                                ) + androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300)))
+                            },
+                            label = "AnimeDetailTransition"
+                        ) { targetAnime ->
+                        val anime = targetAnime
+                        val context = androidx.compose.ui.platform.LocalContext.current
                         val episodes = remember(anime) { viewModel.getEpisodesForAnime(anime) }
-                        val isSaved by viewModel.isAnimeSaved(anime.id).collectAsStateWithLifecycle(initialValue = false)
-                        val savedStatus by viewModel.getAnimeSavedStatus(anime.id).collectAsStateWithLifecycle(initialValue = null)
-                        val userRating by viewModel.getUserRating(anime.id).collectAsStateWithLifecycle(initialValue = null)
-                        val watchedEpisodes by viewModel.getWatchedEpisodes(anime.id).collectAsStateWithLifecycle(initialValue = emptySet())
+                        
+                        val isSavedFlow = remember(anime.id) { viewModel.isAnimeSaved(anime.id) }
+                        val isSaved by isSavedFlow.collectAsStateWithLifecycle(initialValue = false)
+                        
+                        val savedStatusFlow = remember(anime.id) { viewModel.getAnimeSavedStatus(anime.id) }
+                        val savedStatus by savedStatusFlow.collectAsStateWithLifecycle(initialValue = null)
+                        
+                        val userRatingFlow = remember(anime.id) { viewModel.getUserRating(anime.id) }
+                        val userRating by userRatingFlow.collectAsStateWithLifecycle(initialValue = null)
+                        
+                        val watchedEpisodesFlow = remember(anime.id) { viewModel.getWatchedEpisodes(anime.id) }
+                        val watchedEpisodes by watchedEpisodesFlow.collectAsStateWithLifecycle(initialValue = emptySet())
                         AnimeDetailScreen(
+                            allAnime = allAnime,
+                            onRelatedAnimeClick = { related ->
+                                val found = allAnime.find { appAnime ->
+                                    appAnime.titleEn.equals(related.titleEn, ignoreCase = true) || 
+                                    (appAnime.titleAr.isNotBlank() && appAnime.titleAr.equals(related.titleAr, ignoreCase = true))
+                                }
+                                if (found != null) {
+                                    viewModel.openAnimeDetails(found)
+                                } else {
+                                    android.widget.Toast.makeText(context, "هذا الأنمي غير متوفر حالياً", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onRecommendationClick = { rec -> viewModel.openAnimeDetails(rec) },
                             anime = anime,
                             episodes = episodes,
                             isSaved = isSaved,
@@ -520,6 +556,7 @@ fun AniFluxAppShell(
                                 viewModel.openPlayer(anime, ep, server)
                             }
                         )
+                        }
                     }
                 }
 
@@ -598,8 +635,9 @@ fun AniFluxAppShell(
                 
 
 
-            }
-        }
-    }
+}
+}
+
+}
 }
 }

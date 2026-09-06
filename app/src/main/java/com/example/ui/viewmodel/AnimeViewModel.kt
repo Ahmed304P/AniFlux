@@ -351,13 +351,19 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openAnimeDetails(anime: Anime) {
-        _selectedAnimeForDetails.value = anime
         val currentStack = _overlayStack.value.toMutableList()
+        val lastOverlay = currentStack.lastOrNull()
+        if (lastOverlay is OverlayState.AnimeDetails && lastOverlay.anime.id == anime.id) {
+            return
+        }
+        
+        _selectedAnimeForDetails.value = anime
         if (currentStack.isNotEmpty() && currentStack.last() is OverlayState.Search) {
             currentStack[currentStack.size - 1] = OverlayState.Search(_filterState.value)
         }
         currentStack.add(OverlayState.AnimeDetails(anime))
         _overlayStack.value = currentStack
+        
         // Auto-add to watch history when entering details screen
         viewModelScope.launch {
             repository.recordWatchProgress(anime.id, 0, "Details", 0, 0)

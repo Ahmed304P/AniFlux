@@ -58,11 +58,16 @@ import com.example.util.shimmerEffect
 import coil.request.ImageRequest
 import com.example.data.model.Anime
 import com.example.data.model.Episode
+import com.example.util.RelatedAnime
+import com.example.util.AniListService
 import com.example.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnimeDetailScreen(
+    allAnime: List<Anime>,
+    onRelatedAnimeClick: (com.example.util.RelatedAnime) -> Unit,
+    onRecommendationClick: (Anime) -> Unit,
     anime: Anime,
     episodes: List<Episode>,
     isSaved: Boolean,
@@ -199,7 +204,7 @@ fun AnimeDetailScreen(
                 label = "TabContentAnimation"
             ) { targetIndex ->
                 when (targetIndex) {
-                    0 -> AnimeDetailsTabContent(anime = anime, isSaved = isSaved, savedStatus = savedStatus, userRating = userRating, onOpenMyListOptions = { showMyListSheet = true }, onRateClick = { showRatingDialog = true }, onGenreClick = onGenreClick, onStudioClick = onStudioClick, lazyListState = detailsListState)
+                    0 -> AnimeDetailsTabContent(anime = anime, isSaved = isSaved, savedStatus = savedStatus, userRating = userRating, onOpenMyListOptions = { showMyListSheet = true }, onRateClick = { showRatingDialog = true }, onGenreClick = onGenreClick, onStudioClick = onStudioClick, lazyListState = detailsListState, allAnime = allAnime, onRelatedAnimeClick = onRelatedAnimeClick, onRecommendationClick = onRecommendationClick)
                     1 -> AnimeEpisodesTabContent(episodes, watchedEpisodes, onToggleWatched, onEpisodeClick = { episodeActionSheet = it })
                     2 -> AnimeStatsTabContent(anime, isSaved, savedStatus, userRating)
                     3 -> AnimeCharactersTabContent(anime)
@@ -495,7 +500,7 @@ fun AnimeDetailScreen(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.End
+                        textAlign = TextAlign.Right
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     
@@ -546,7 +551,7 @@ fun AnimeDetailScreen(
 }
 
 @Composable
-fun AnimeDetailsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?, userRating: Int?, onOpenMyListOptions: () -> Unit, onRateClick: () -> Unit, onGenreClick: (String) -> Unit = {}, onStudioClick: (String) -> Unit = {}, lazyListState: androidx.compose.foundation.lazy.LazyListState) {
+fun AnimeDetailsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?, userRating: Int?, onOpenMyListOptions: () -> Unit, onRateClick: () -> Unit, onGenreClick: (String) -> Unit = {}, onStudioClick: (String) -> Unit = {}, lazyListState: androidx.compose.foundation.lazy.LazyListState, allAnime: List<Anime>, onRelatedAnimeClick: (com.example.util.RelatedAnime) -> Unit, onRecommendationClick: (Anime) -> Unit) {
     LazyColumn(
         state = lazyListState,
         modifier = Modifier.fillMaxSize(),
@@ -575,6 +580,15 @@ fun AnimeDetailsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?,
         item {
             TrailerSection(anime)
         }
+
+        item {
+            RelatedAnimeSection(anime, allAnime, onRelatedAnimeClick)
+        }
+        
+        item {
+            RecommendationsSection(anime, allAnime, onRecommendationClick)
+        }
+
     }
 }
 
@@ -856,7 +870,7 @@ fun InfoItem(title: String, value: String, isChip: Boolean = false, modifier: Mo
                 text = value,
                 color = Color.White,
                 fontSize = 14.sp,
-                textAlign = TextAlign.End,
+                textAlign = TextAlign.Right,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -917,7 +931,7 @@ fun ContentRatingSection(anime: Anime) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 12.dp),
-                textAlign = TextAlign.End
+                textAlign = TextAlign.Right
             )
 
             categories.forEach { category ->
@@ -1081,7 +1095,7 @@ fun TrailerSection(anime: Anime) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
-            textAlign = TextAlign.End
+            textAlign = TextAlign.Right
         )
         
         Box(
@@ -1443,6 +1457,271 @@ fun CharacterCard(name: String, subtitle: String? = null, modifier: Modifier = M
         Text(text = name, color = Color.White, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         if (subtitle != null) {
             Text(text = subtitle, color = Color.Gray, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+
+@Composable
+fun RelatedAnimeSection(anime: Anime, allAnime: List<Anime>, onRelatedClick: (RelatedAnime) -> Unit) {
+    var fetchedRelations by remember { mutableStateOf<List<RelatedAnime>?>(null) }
+    
+    LaunchedEffect(anime.titleEn) {
+        fetchedRelations = null
+        fetchedRelations = AniListService.getAnimeRelations(anime.titleEn)
+    }
+
+    val relatedAnimeList = remember(fetchedRelations, allAnime) {
+        fetchedRelations?.filter { related ->
+            allAnime.any { appAnime ->
+                appAnime.titleEn.equals(related.titleEn, ignoreCase = true) || 
+                (appAnime.titleAr.isNotBlank() && appAnime.titleAr.equals(related.titleAr, ignoreCase = true))
+            }
+        }
+    }
+    
+    if (relatedAnimeList == null) {
+        // Loading state
+        Box(modifier = Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = AniFluxCyan)
+        }
+    } else if (relatedAnimeList!!.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, bottom = 8.dp)
+        ) {
+            Text(
+                text = "ذات صلة",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp).padding(bottom = 12.dp),
+                textAlign = TextAlign.Right
+            )
+            
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(relatedAnimeList!!) { related ->
+                    RelatedAnimeCard(related = related, onClick = { onRelatedClick(related) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RelatedAnimeCard(related: RelatedAnime, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(110.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(AniFluxCardBg)
+        ) {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(related.posterUrl)
+                    .crossfade(true)
+                    .build(),
+                loading = {
+                    Box(modifier = Modifier.fillMaxSize().shimmerEffect())
+                },
+                contentDescription = related.titleAr,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Top Right Badge (Relation Type)
+            val badgeColor = when (related.relationType) {
+                "SEQUEL" -> Color(0xFF1E88E5) // Blue
+                "PREQUEL" -> Color(0xFFE53935) // Red
+                "SIDE_STORY" -> Color(0xFF8E24AA) // Purple
+                "SPIN_OFF" -> Color(0xFFFDD835) // Yellow
+                else -> Color.DarkGray
+            }
+            
+            Surface(
+                shape = RoundedCornerShape(bottomStart = 8.dp, topEnd = 6.dp),
+                color = badgeColor,
+                modifier = Modifier.align(Alignment.TopEnd)
+            ) {
+                Text(
+                    text = related.relationTypeAr,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+            
+            // Bottom Right Badge (Rating / Status)
+            Surface(
+                shape = RoundedCornerShape(topStart = 6.dp),
+                color = Color.Black.copy(alpha = 0.65f),
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
+                Text(
+                    text = related.status,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+        
+        val titleText = related.titleAr.ifEmpty { related.titleEn }
+        val isArabicText = titleText.any { it in '؀'..'ۿ' }
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalLayoutDirection provides if (isArabicText) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
+        ) {
+            Text(
+                text = titleText,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = if (isArabicText) TextAlign.Right else TextAlign.Left,
+                modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
+            )
+        }
+        
+        if (related.rating.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    tint = Color(0xFFFFC107),
+                    modifier = Modifier.size(12.dp)
+                )
+                Text(
+                    text = related.rating,
+                    color = Color.LightGray,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RecommendationsSection(anime: Anime, allAnime: List<Anime>, onRecommendationClick: (Anime) -> Unit) {
+    val recommendations = remember(anime, allAnime) {
+        val currentGenres = anime.genres.map { it.trim().lowercase() }.toSet()
+        allAnime.filter { it.id != anime.id }
+            .map { other ->
+                val otherGenres = other.genres.map { it.trim().lowercase() }.toSet()
+                val sharedCount = otherGenres.intersect(currentGenres).size
+                Pair(other, sharedCount)
+            }
+            .filter { it.second >= 2 }
+            .sortedByDescending { it.second }
+            .map { it.first }
+            .take(5)
+    }
+    
+    if (recommendations.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = 16.dp)
+        ) {
+            Text(
+                text = "توصيات",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp).padding(bottom = 12.dp),
+                textAlign = TextAlign.Right
+            )
+            
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(recommendations) { recAnime ->
+                    RecommendationAnimeCard(anime = recAnime, onClick = { onRecommendationClick(recAnime) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecommendationAnimeCard(anime: Anime, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(110.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(AniFluxCardBg)
+        ) {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(anime.posterUrl)
+                    .crossfade(true)
+                    .build(),
+                loading = {
+                    Box(modifier = Modifier.fillMaxSize().shimmerEffect())
+                },
+                contentDescription = anime.titleAr,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Bottom Right Badge (Episodes / Status)
+            Surface(
+                shape = RoundedCornerShape(topStart = 6.dp),
+                color = Color.Black.copy(alpha = 0.65f),
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
+                Text(
+                    text = if (anime.status == "مستمر") "الحلقة : ${anime.currentEpisodes}" else anime.status,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+        
+        val titleText = anime.titleAr.ifEmpty { anime.titleEn }
+        val isArabicText = titleText.any { it in '؀'..'ۿ' }
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalLayoutDirection provides if (isArabicText) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
+        ) {
+            Text(
+                text = titleText,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = if (isArabicText) TextAlign.Right else TextAlign.Left,
+                modifier = Modifier.padding(top = 4.dp).fillMaxWidth()
+            )
         }
     }
 }
