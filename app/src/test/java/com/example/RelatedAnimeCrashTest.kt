@@ -10,7 +10,6 @@ import org.junit.runner.RunWith
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import com.example.data.repository.AnimeRepository
-import org.mockito.Mockito.mock
 
 @RunWith(AndroidJUnit4::class)
 class RelatedAnimeCrashTest {
