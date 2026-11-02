@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.sp
 fun MasterAdminDashboardScreen(
     onBack: () -> Unit,
     onNavigateToAnimeManager: () -> Unit,
+    onNavigateToExtensionRepos: () -> Unit = {},
+    totalAnimeCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -56,7 +58,7 @@ fun MasterAdminDashboardScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatCard(title = "إجمالي المستخدمين", value = "1,245", icon = Icons.Default.People, modifier = Modifier.weight(1f))
-                StatCard(title = "إجمالي الأنمي", value = "342", icon = Icons.Default.Movie, modifier = Modifier.weight(1f))
+                StatCard(title = "إجمالي الأنمي", value = if (totalAnimeCount > 0) totalAnimeCount.toString() else "8", icon = Icons.Default.Movie, modifier = Modifier.weight(1f))
                 StatCard(title = "التعليقات", value = "8,920", icon = Icons.Default.Comment, modifier = Modifier.weight(1f))
             }
 
@@ -70,6 +72,7 @@ fun MasterAdminDashboardScreen(
 
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
+                contentPadding = PaddingValues(bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -107,6 +110,15 @@ fun MasterAdminDashboardScreen(
                         icon = Icons.Default.Settings,
                         color = Color(0xFF4CAF50),
                         onClick = {}
+                    )
+                }
+                item {
+                    AdminFeatureCard(
+                        title = "مستودعات الإضافات",
+                        description = "استيراد وفحص وتفعيل الإضافات",
+                        icon = Icons.Default.Extension,
+                        color = Color(0xFF9C27B0),
+                        onClick = onNavigateToExtensionRepos
                     )
                 }
             }

@@ -94,13 +94,22 @@ fun FeaturedBanner(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = anime.titleAr,
+                    text = anime.primaryTitle,
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (anime.titleAr.isNotBlank() && anime.titleAr != anime.primaryTitle) {
+                    Text(
+                        text = anime.titleAr,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(4.dp))
 

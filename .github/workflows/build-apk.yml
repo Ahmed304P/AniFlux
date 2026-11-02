@@ -1,0 +1,60 @@
+name: Build Direct Download APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare Debug Keystore if needed
+        run: |
+          if [ ! -f "debug.keystore" ]; then
+            if [ -f "debug.keystore.base64" ]; then
+              base64 -d debug.keystore.base64 > debug.keystore
+            else
+              keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            fi
+          fi
+          if [ ! -f ".env.example" ]; then
+            touch .env.example
+          fi
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Rename APK for Direct Download
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk AniFlux-Direct.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AniFlux-Direct-APK
+          path: AniFlux-Direct.apk
+
+      - name: Publish Direct Download Release on GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v3.5-latest
+          name: "AniFlux v3.5 - تحميل مباشر (APK)"
+          body: "اضغط على ملف **AniFlux-Direct.apk** بالأسفل لتحميل التطبيق وتثبيته مباشرة على هاتفك."
+          files: AniFlux-Direct.apk
+          prerelease: false

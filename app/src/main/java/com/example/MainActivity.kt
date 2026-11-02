@@ -100,6 +100,8 @@ fun AniFluxAppShell(
     val aiMessages by viewModel.aiMessages.collectAsStateWithLifecycle()
     val currentTheme by viewModel.currentTheme.collectAsStateWithLifecycle()
     val skipTime by viewModel.skipTime.collectAsStateWithLifecycle()
+    val enabledExtensions by viewModel.enabledExtensions.collectAsStateWithLifecycle()
+    val activeEpisodeSources by viewModel.activeEpisodeSources.collectAsStateWithLifecycle()
 
 
     val tabHistorySize by viewModel.tabHistorySize.collectAsStateWithLifecycle()
@@ -409,7 +411,9 @@ fun AniFluxAppShell(
                     )
                     20 -> MasterAdminDashboardScreen(
                         onBack = { viewModel.popTabStack() },
-                        onNavigateToAnimeManager = { viewModel.setSelectedTab(21) }
+                        onNavigateToAnimeManager = { viewModel.setSelectedTab(21) },
+                        onNavigateToExtensionRepos = { viewModel.setSelectedTab(24) },
+                        totalAnimeCount = allAnime.size
                     )
                     21 -> AdminAnimeManagerScreen(
                         onBack = { viewModel.popTabStack() },
@@ -426,6 +430,10 @@ fun AniFluxAppShell(
                     )
                     23 -> AdminEpisodeManagerScreen(
                         animeId = viewModel.adminEditingAnimeId ?: "",
+                        onBack = { viewModel.popTabStack() },
+                        viewModel = viewModel
+                    )
+                    24 -> AdminExtensionReposScreen(
                         onBack = { viewModel.popTabStack() },
                         viewModel = viewModel
                     )
@@ -509,9 +517,11 @@ fun AniFluxAppShell(
                             },
                             label = "AnimeDetailTransition"
                         ) { targetAnime ->
-                        val anime = targetAnime
+                        val anime = allAnime.find { it.id == targetAnime.id } ?: targetAnime
                         val context = androidx.compose.ui.platform.LocalContext.current
-                        val episodes = remember(anime) { viewModel.getEpisodesForAnime(anime) }
+                        val episodes = remember(anime, enabledExtensions, activeEpisodeSources) {
+                            viewModel.getEpisodesForAnime(anime, enabledExtensions, activeEpisodeSources)
+                        }
                         
                         val isSavedFlow = remember(anime.id) { viewModel.isAnimeSaved(anime.id) }
                         val isSaved by isSavedFlow.collectAsStateWithLifecycle(initialValue = false)
@@ -575,8 +585,12 @@ fun AniFluxAppShell(
                     val currentPair = activePlayerPair ?: lastPlayerPair
 
                     if (currentPair != null) {
-                        val (anime, activeEp) = currentPair
-                        val episodes = remember(anime) { viewModel.getEpisodesForAnime(anime) }
+                        val (rawAnime, activeEp) = currentPair
+                        val anime = allAnime.find { it.id == rawAnime.id } ?: rawAnime
+                        val episodes = remember(anime, enabledExtensions, activeEpisodeSources) {
+                            viewModel.getEpisodesForAnime(anime, enabledExtensions, activeEpisodeSources)
+                        }
+                        val liveCurrentEpisode = episodes.find { it.episodeNumber == activeEp.episodeNumber } ?: activeEp
 
                         val currentSkipTime by viewModel.skipTime.collectAsStateWithLifecycle()
                         val activeServer by viewModel.activePlayerServer.collectAsStateWithLifecycle()
@@ -584,7 +598,7 @@ fun AniFluxAppShell(
                             skipTime = currentSkipTime,
                             initialServer = activeServer,
                             anime = anime,
-                            currentEpisode = activeEp,
+                            currentEpisode = liveCurrentEpisode,
                             allEpisodes = episodes,
                             comments = activeComments,
                             onClose = { viewModel.closePlayer() },

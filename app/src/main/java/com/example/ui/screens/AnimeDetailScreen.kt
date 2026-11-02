@@ -1,5 +1,6 @@
 package com.example.ui.screens
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.testTag
 
 
 import androidx.compose.animation.AnimatedContent
@@ -87,7 +88,37 @@ fun AnimeDetailScreen(
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val detailsListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val socialViewModel: SocialViewModel = viewModel()
+    val animeViewModel: com.example.ui.viewmodel.AnimeViewModel = viewModel()
     val showComments by socialViewModel.shouldOpenComments.collectAsState()
+    val enabledExtensions by animeViewModel.enabledExtensions.collectAsState()
+
+    // Auto-heal genres if empty (pulls verified standard genres automatically)
+    LaunchedEffect(anime.id) {
+        if (anime.genres.isEmpty() && (anime.titleEn.isNotBlank() || anime.titleAr.isNotBlank())) {
+            try {
+                val query = anime.titleEn.ifBlank { anime.titleAr }
+                val results = com.example.util.AniListService.searchAnime(query)
+                val match = results.firstOrNull { 
+                    it.genres.isNotBlank() && (
+                        it.titleEn.equals(anime.titleEn, ignoreCase = true) || 
+                        it.titleAr.equals(anime.titleAr, ignoreCase = true) ||
+                        it.titleEn.contains(anime.titleEn, ignoreCase = true)
+                    )
+                } ?: results.firstOrNull { it.genres.isNotBlank() }
+
+                if (match != null && match.genres.isNotBlank()) {
+                    val rawParsed = match.genres.split(Regex("[,،]")).map { it.trim() }.filter { it.isNotBlank() }
+                    val cleaned = com.example.util.AniListService.cleanAndFilterGenres(rawParsed)
+                    val resolved = if (cleaned.isNotEmpty()) cleaned else rawParsed
+                    if (resolved.isNotEmpty()) {
+                        animeViewModel.saveAnime(anime.copy(genres = resolved))
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
     var showMyListSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
     val tabs = listOf("التفاصيل", "الحلقات", "الاحصائيات", "الشخصيات والطاقم")
@@ -103,14 +134,25 @@ fun AnimeDetailScreen(
             topBar = {
             TopAppBar(
                 windowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp),
-                title = { 
-                    Text(
-                        text = anime.titleAr.ifEmpty { anime.titleEn },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    ) 
+                title = {
+                    Column {
+                        Text(
+                            text = anime.primaryTitle,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (anime.titleAr.isNotBlank() && anime.titleAr != anime.primaryTitle) {
+                            Text(
+                                text = anime.titleAr,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 11.sp,
+                                color = Color.LightGray
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -192,6 +234,7 @@ fun AnimeDetailScreen(
 
             AnimatedContent(
                 targetState = selectedTabIndex,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
                 transitionSpec = {
                     if (targetState > initialState) {
                         (slideInHorizontally(animationSpec = tween(300)) { width -> width } + fadeIn(animationSpec = tween(300))).togetherWith(
@@ -205,7 +248,7 @@ fun AnimeDetailScreen(
             ) { targetIndex ->
                 when (targetIndex) {
                     0 -> AnimeDetailsTabContent(anime = anime, isSaved = isSaved, savedStatus = savedStatus, userRating = userRating, onOpenMyListOptions = { showMyListSheet = true }, onRateClick = { showRatingDialog = true }, onGenreClick = onGenreClick, onStudioClick = onStudioClick, lazyListState = detailsListState, allAnime = allAnime, onRelatedAnimeClick = onRelatedAnimeClick, onRecommendationClick = onRecommendationClick)
-                    1 -> AnimeEpisodesTabContent(episodes, watchedEpisodes, onToggleWatched, onEpisodeClick = { episodeActionSheet = it })
+                    1 -> AnimeEpisodesTabContent(episodes, watchedEpisodes, onToggleWatched, onEpisodeClick = { episodeActionSheet = it }, enabledExtensions = enabledExtensions)
                     2 -> AnimeStatsTabContent(anime, isSaved, savedStatus, userRating)
                     3 -> AnimeCharactersTabContent(anime)
                 }
@@ -336,7 +379,8 @@ fun AnimeDetailScreen(
     }
 
         if (episodeActionSheet != null) {
-            val ep = episodeActionSheet!!
+            val selectedEpSnapshot = episodeActionSheet!!
+            val ep = episodes.find { it.episodeNumber == selectedEpSnapshot.episodeNumber } ?: selectedEpSnapshot
             androidx.compose.material3.ModalBottomSheet(
                 onDismissRequest = { episodeActionSheet = null },
                 containerColor = Color(0xFF232834),
@@ -357,6 +401,7 @@ fun AnimeDetailScreen(
                     )
                     
                     ep.servers.forEach { server ->
+                        val isExtensionServer = server.id.startsWith("ext_")
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -369,25 +414,34 @@ fun AnimeDetailScreen(
                         ) {
                             Surface(
                                 shape = CircleShape,
-                                color = Color(0xFFE91E63).copy(alpha = 0.2f),
+                                color = if (isExtensionServer) Color(0xFF9C27B0).copy(alpha = 0.22f) else Color(0xFFE91E63).copy(alpha = 0.2f),
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = Icons.Default.Dns,
+                                        imageVector = if (isExtensionServer) Icons.Default.Extension else Icons.Default.Dns,
                                         contentDescription = null,
-                                        tint = Color(0xFFE91E63),
+                                        tint = if (isExtensionServer) Color(0xFFCE93D8) else Color(0xFFE91E63),
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
                             }
                             Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = server.nameAr,
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = server.nameAr,
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (isExtensionServer) {
+                                    Text(
+                                        text = "إضافة مفعّلة ومفحوصة أمنياً",
+                                        color = Color(0xFFCE93D8),
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
                         }
                         androidx.compose.material3.HorizontalDivider(color = Color(0xFF373E4E), thickness = 1.dp)
                     }
@@ -770,6 +824,7 @@ fun AnimeActionsRow(
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun AnimeSynopsisSection(anime: Anime, onGenreClick: (String) -> Unit = {}) {
     Column(modifier = Modifier.padding(16.dp)) {
@@ -783,22 +838,27 @@ fun AnimeSynopsisSection(anime: Anime, onGenreClick: (String) -> Unit = {}) {
         Spacer(modifier = Modifier.height(12.dp))
         
         // Tags/Genres
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            anime.genres.take(4).forEach { genre ->
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(16.dp),
-                    onClick = { onGenreClick(genre) }
-                ) {
-                    Text(
-                        text = genre, 
-                        color = Color.White, 
-                        fontSize = 12.sp, 
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
+        if (anime.genres.isNotEmpty()) {
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                anime.genres.forEach { genre ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE50914).copy(alpha = 0.35f)),
+                        onClick = { onGenreClick(genre) }
+                    ) {
+                        Text(
+                            text = genre, 
+                            color = Color.White, 
+                            fontSize = 12.sp, 
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
         }
@@ -827,7 +887,7 @@ fun AnimeInfoGrid(anime: Anime, onStudioClick: (String) -> Unit = {}) {
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
                 InfoItem(title = "الاستوديو", value = anime.studio, isChip = true, modifier = Modifier.weight(1f), onClick = { onStudioClick(anime.studio) })
-                InfoItem(title = "العنوان الانجليزي", value = anime.titleAr, modifier = Modifier.weight(1f))
+                InfoItem(title = "العنوان الانجليزي", value = anime.titleEn.ifEmpty { anime.titleAr }, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -1153,59 +1213,366 @@ fun TrailerSection(anime: Anime) {
 }
 
 @Composable
-fun AnimeEpisodesTabContent(episodes: List<Episode>, watchedEpisodes: Set<Int>, onToggleWatched: (Int, Boolean) -> Unit, onEpisodeClick: (Episode) -> Unit) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
-    ) {
-        itemsIndexed(items = episodes, key = { _, it -> it.id }) { index, ep ->
-            com.example.ui.components.StaggeredAnimatedItem(index = index) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(12.dp),
+fun AnimeEpisodesTabContent(
+    episodes: List<Episode>, 
+    watchedEpisodes: Set<Int>, 
+    onToggleWatched: (Int, Boolean) -> Unit, 
+    onEpisodeClick: (Episode) -> Unit,
+    enabledExtensions: List<com.example.data.local.AnimeExtensionEntity> = emptyList()
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    // false = oldest first (1 -> N), true = newest first (N -> 1)
+    var isNewestFirst by remember { mutableStateOf(false) }
+
+    // Smart filtering and ordering of episodes with full Arabic numeral & text normalization
+    val filteredAndSortedEpisodes = remember(episodes, searchQuery, isNewestFirst) {
+        val trimmed = searchQuery.trim()
+        val normalized = trimmed
+            .replace('٠', '0').replace('١', '1').replace('٢', '2')
+            .replace('٣', '3').replace('٤', '4').replace('٥', '5')
+            .replace('٦', '6').replace('٧', '7').replace('٨', '8')
+            .replace('٩', '9')
+            .lowercase()
+            .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+            .replace('ة', 'ه').replace('ى', 'ي')
+
+        val queryDigits = normalized.filter { it.isDigit() }
+        val queryWords = normalized.split("\\s+".toRegex()).filter { it.isNotBlank() }
+
+        val filtered = if (trimmed.isEmpty()) {
+            episodes
+        } else {
+            episodes.filter { ep ->
+                val epNumStr = ep.episodeNumber.toString()
+                val normTitle = ep.titleAr.lowercase()
+                    .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا')
+                    .replace('ة', 'ه').replace('ى', 'ي')
+
+                // 1. Direct number match (e.g. typing "5" or "٥" matches episode 5)
+                val matchesNumber = queryDigits.isNotEmpty() && epNumStr == queryDigits
+
+                // 2. Exact or substring match in normalized title
+                val matchesExactQuery = normTitle.contains(normalized)
+
+                // 3. Multi-word fuzzy match (e.g. "حلقة 3" or "الحلقة 12")
+                val matchesWords = queryWords.isNotEmpty() && queryWords.all { word ->
+                    val cleanWord = word.filter { it.isDigit() }
+                    if (cleanWord.isNotEmpty()) {
+                        epNumStr == cleanWord || epNumStr.contains(cleanWord)
+                    } else {
+                        normTitle.contains(word) || "الحلقه".contains(word) || "حلقه".contains(word) || word in listOf("ep", "episode")
+                    }
+                }
+
+                matchesNumber || matchesExactQuery || matchesWords
+            }
+        }
+
+        if (isNewestFirst) {
+            filtered.sortedByDescending { it.episodeNumber }
+        } else {
+            filtered.sortedBy { it.episodeNumber }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Search and Sort Control Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Modern, sleek smart search field matching app theme
+            TextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .bounceClick { onEpisodeClick(ep) }
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("${ep.episodeNumber}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    .weight(1f)
+                    .height(52.dp)
+                    .testTag("episodes_search_input")
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(
+                        width = 1.dp,
+                        color = if (searchQuery.isNotBlank()) AniFluxCyan.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(12.dp)
+                    ),
+                placeholder = {
+                    Text(
+                        text = "ابحث برقم الحلقة أو العنوان...",
+                        color = Color.Gray,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "بحث الحلقات",
+                        tint = if (searchQuery.isNotBlank()) AniFluxCyan else Color.Gray,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { searchQuery = "" },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "مسح",
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
+                },
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = AniFluxCyan
+                )
+            )
 
-                    Spacer(modifier = Modifier.width(16.dp))
+            // Attached, neatly styled Sort Order Toggle Button
+            Surface(
+                modifier = Modifier
+                    .height(52.dp)
+                    .testTag("episodes_sort_toggle_button")
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(
+                        width = 1.dp,
+                        color = if (isNewestFirst) AniFluxCyan.copy(alpha = 0.8f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable { isNewestFirst = !isNewestFirst },
+                shape = RoundedCornerShape(12.dp),
+                color = if (isNewestFirst) AniFluxCyan.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .fillMaxHeight(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SwapVert,
+                        contentDescription = "عكس ترتيب الحلقات",
+                        tint = if (isNewestFirst) AniFluxCyan else Color.LightGray,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .rotate(if (isNewestFirst) 180f else 0f)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isNewestFirst) "الأحدث" else "الأقدم",
+                        color = if (isNewestFirst) AniFluxCyan else Color.LightGray,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = ep.titleAr, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "المدة: ${ep.durationMinutes} دقيقة • سيرفرات متعددة", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    }
+        // Episodes Count / Status Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${filteredAndSortedEpisodes.size} حلقة",
+                color = Color.Gray,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+            if (isNewestFirst) {
+                Text(
+                    text = "من الحلقة الأخيرة إلى الأولى (عكسي)",
+                    color = AniFluxCyan.copy(alpha = 0.9f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            } else {
+                Text(
+                    text = "من الحلقة الأولى إلى الأخيرة (تصاعدي)",
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
 
-                    val isWatched = watchedEpisodes.contains(ep.episodeNumber)
-                    IconButton(onClick = { onToggleWatched(ep.episodeNumber, !isWatched) }) {
+        // Active Enabled Extensions Strip (Only visible when Admin has enabled compatible extensions; disappears immediately when disabled)
+        AnimatedVisibility(visible = enabledExtensions.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Visibility, 
-                            contentDescription = "Watched", 
-                            tint = if (isWatched) Color(0xFFE53935) else Color.LightGray
+                            imageVector = Icons.Default.Extension,
+                            contentDescription = null,
+                            tint = Color(0xFFCE93D8),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "الإضافات النشطة:",
+                            color = Color(0xFFCE93D8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                    IconButton(onClick = { onEpisodeClick(ep) }) {
-                        Icon(imageVector = Icons.Default.ChatBubbleOutline, contentDescription = "Comments", tint = Color.LightGray)
+                }
+                items(enabledExtensions, key = { it.extensionId }) { ext ->
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF9C27B0).copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, Color(0xFFCE93D8).copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF81C784),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${ext.name} (v${ext.version})",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Empty state when search produces no results
+        if (filteredAndSortedEpisodes.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SearchOff,
+                        contentDescription = null,
+                        tint = Color.Gray.copy(alpha = 0.6f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "لم يتم العثور على أي حلقة مطابقة لـ \"$searchQuery\"",
+                        color = Color.Gray,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp)
+            ) {
+                itemsIndexed(items = filteredAndSortedEpisodes, key = { _, it -> it.id }) { index, ep ->
+                    com.example.ui.components.StaggeredAnimatedItem(index = index) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .bounceClick { onEpisodeClick(ep) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "${ep.episodeNumber}", 
+                                            color = MaterialTheme.colorScheme.primary, 
+                                            fontWeight = FontWeight.Bold, 
+                                            fontSize = 16.sp
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(16.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = ep.titleAr, 
+                                        color = Color.White, 
+                                        fontSize = 14.sp, 
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "المدة: ${ep.durationMinutes} دقيقة • سيرفرات متعددة", 
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant, 
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                val isWatched = watchedEpisodes.contains(ep.episodeNumber)
+                                IconButton(onClick = { onToggleWatched(ep.episodeNumber, !isWatched) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Visibility, 
+                                        contentDescription = "Watched", 
+                                        tint = if (isWatched) Color(0xFFE53935) else Color.LightGray
+                                    )
+                                }
+                                IconButton(onClick = { onEpisodeClick(ep) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ChatBubbleOutline, 
+                                        contentDescription = "Comments", 
+                                        tint = Color.LightGray
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
-}
 }
 @Composable
 fun AnimeStatsTabContent(anime: Anime, isSaved: Boolean, savedStatus: String?, userRating: Int?) {

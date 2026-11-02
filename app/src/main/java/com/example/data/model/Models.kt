@@ -5,6 +5,13 @@ data class Person(
     val imageUrl: String
 )
 
+data class SubtitleTrack(
+    val langCode: String, // "ar", "en", "ja"
+    val label: String, // "العربية (SRT)", "English (VTT)"
+    val url: String,
+    val format: String = "VTT" // "SRT", "VTT", "ASS", "SSA"
+)
+
 data class Anime(
     val id: String,
     val titleAr: String,
@@ -15,7 +22,7 @@ data class Anime(
     val totalEpisodes: Int,
     val currentEpisodes: Int,
     val status: String, // "مستمر", "مكتمل", "قريباً"
-    val type: String, // "TV", "Movie", "OVA"
+    val type: String, // "TV", "Movie", "OVA", "ONA"
     val year: Int,
     val studio: String,
     val synopsisAr: String,
@@ -26,30 +33,64 @@ data class Anime(
     val featuredTag: String = "جديد الموسم",
     val ageRating: String = "+13", // "+13", "+17", "للجميع"
     val season: String = "ربيع", // "ربيع", "صيف", "خريف", "شتاء"
+    val seasonsCount: Int = 1,
     val isCommentsLocked: Boolean = false,
     val trailerUrl: String = "",
     val characters: List<Person> = emptyList(),
     val staff: List<Person> = emptyList(),
     val serverId: String? = null,
-    val customEpisodes: Map<String, String>? = null
-)
+    val customEpisodes: Map<String, String>? = null,
+    val originalTitle: String = "",
+    val titleJp: String = "",
+    val altTitles: List<String> = emptyList(),
+    val sourceId: String = "",
+    val sourceName: String = "",
+    val sourceAnimeId: String = "",
+    val lastUpdated: Long = 0L
+) {
+    /**
+     * Requirement 4: Always display the Original English or Latin/Romaji title from the source
+     * as the primary title across the application, without auto-translating it to Arabic.
+     */
+    val primaryTitle: String
+        get() = originalTitle
+            .takeIf { it.isNotBlank() && !it.startsWith("Fake Anime") }
+            ?: titleEn.takeIf { it.isNotBlank() && !it.startsWith("Fake Anime") }
+            ?: titleJp.takeIf { it.isNotBlank() }
+            ?: titleAr.ifBlank { titleEn }
+}
 
 data class Episode(
     val id: String,
     val animeId: String,
     val episodeNumber: Int,
     val titleAr: String,
-    val durationMinutes: Int = 24,
+    val durationMinutes: Int = 0,
     val thumbnailUrl: String,
     val releaseDate: String,
-    val servers: List<StreamServer>
+    val servers: List<StreamServer>,
+    val descriptionAr: String = "",
+    val sourceEpisodeId: String = "",
+    val sourceAnimeId: String = "",
+    val seasonNumber: Int = 1,
+    val originalTitle: String = "",
+    val status: String = "متاح",
+    val episodePageUrl: String = "",
+    val sourceId: String = ""
 )
 
 data class StreamServer(
     val id: String,
-    val nameAr: String, // "سيرفر AniFlux FHD", "سيرفر cloud 720p", "سيرفر VIP 1080p", "سيرفر سريع SD"
-    val quality: String, // "1080p", "720p", "480p"
-    val streamUrl: String
+    val nameAr: String,
+    val quality: String, // "4K", "1080p", "720p", "480p", "Auto"
+    val streamUrl: String,
+    val streamType: String = "MP4", // "MP4", "HLS", "DASH", "WEBM", "EMBED"
+    val subtitleLang: String = "مترجم عربي",
+    val headers: Map<String, String> = emptyMap(),
+    val subtitleTracks: List<SubtitleTrack> = emptyList(),
+    val serverOrder: Int = 0,
+    val sourceId: String = "",
+    val sourceName: String = ""
 )
 
 data class CommentItem(

@@ -100,8 +100,8 @@ fun AnimeCard(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Title below poster
-        val titleText = anime.titleAr.ifEmpty { anime.titleEn }
+        // Title below poster (Primary Original English/Romaji Title)
+        val titleText = anime.primaryTitle
         val isArabicText = titleText.any { it in '\u0600'..'\u06FF' }
         
         androidx.compose.runtime.CompositionLocalProvider(
@@ -214,23 +214,34 @@ fun AnimeListCard(
                 .height(140.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            val titleText = anime.titleAr.ifEmpty { anime.titleEn }
+            val titleText = anime.primaryTitle
             val isArabicText = titleText.any { it in '\u0600'..'\u06FF' }
 
-            androidx.compose.runtime.CompositionLocalProvider(
-                androidx.compose.ui.platform.LocalLayoutDirection provides if (isArabicText) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
-            ) {
-                Text(
-                    text = titleText,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    lineHeight = 20.sp,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = if (isArabicText) androidx.compose.ui.text.style.TextAlign.Right else androidx.compose.ui.text.style.TextAlign.Left,
-                    modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp).fillMaxWidth()
-                )
+            Column(modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp).fillMaxWidth()) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalLayoutDirection provides if (isArabicText) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
+                ) {
+                    Text(
+                        text = titleText,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        lineHeight = 20.sp,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = if (isArabicText) androidx.compose.ui.text.style.TextAlign.Right else androidx.compose.ui.text.style.TextAlign.Left,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (anime.titleAr.isNotBlank() && anime.titleAr != titleText) {
+                    Text(
+                        text = anime.titleAr,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Text(

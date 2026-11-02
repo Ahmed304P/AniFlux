@@ -6,6 +6,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AniFluxDatabase
+import com.example.data.local.AnimeExtensionEntity
+import com.example.data.local.ExtensionAnimeLinkEntity
+import com.example.data.local.ExtensionRepoEntity
+import com.example.data.local.ExtensionSyncStateEntity
+import com.example.data.local.UnifiedEpisodeSourceEntity
 import com.example.data.model.*
 import com.example.data.repository.AnimeRepository
 import kotlinx.coroutines.flow.*
@@ -195,19 +200,26 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     val allAnime: StateFlow<List<Anime>> = _allAnime
 
     init {
+        // Background auto-sync for all currently enabled extensions on launch
         viewModelScope.launch {
-            delay(1500) // Simulate network load
-            repository.publishedAnimeFlow.collect { publishedAnime ->
-                val mergedList = mutableListOf<Anime>()
-                mergedList.addAll(publishedAnime)
-                
-                // Add sample animes that are not in the published list (so we don't duplicate or overwrite edits)
-                val publishedIds = publishedAnime.map { it.id }.toSet()
-                val samplesToAdd = repository.sampleAnimeList.filter { it.id !in publishedIds }
-                mergedList.addAll(samplesToAdd)
-                
-                _allAnime.value = mergedList
+            repository.syncAllEnabledExtensions()
+        }
+
+        // Collect the Unified Anime Catalog (Admin Published + Deduplicated Extension Anime + Base Catalog)
+        viewModelScope.launch {
+            delay(500)
+            repository.unifiedCatalogFlow.collect { unifiedCatalog ->
+                _allAnime.value = unifiedCatalog
                 _isLoading.value = false
+
+                // Keep open detail screen reactive if its anime gained episodes/characters/servers from an extension
+                val currentDetail = _selectedAnimeForDetails.value
+                if (currentDetail != null) {
+                    val refreshed = unifiedCatalog.find { it.id == currentDetail.id }
+                    if (refreshed != null && refreshed != currentDetail) {
+                        _selectedAnimeForDetails.value = refreshed
+                    }
+                }
             }
         }
     }
@@ -261,8 +273,12 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     val filteredAnimeList: StateFlow<List<Anime>> = combine(allAnime, _filterState) { list, filters ->
         list.filter { anime ->
             val matchesQuery = filters.query.isBlank() ||
-                    anime.titleAr.contains(filters.query, ignoreCase = true) ||
+                    anime.primaryTitle.contains(filters.query, ignoreCase = true) ||
+                    anime.originalTitle.contains(filters.query, ignoreCase = true) ||
                     anime.titleEn.contains(filters.query, ignoreCase = true) ||
+                    anime.titleJp.contains(filters.query, ignoreCase = true) ||
+                    anime.titleAr.contains(filters.query, ignoreCase = true) ||
+                    anime.altTitles.any { it.contains(filters.query, ignoreCase = true) } ||
                     anime.genres.any { it.contains(filters.query, ignoreCase = true) }
 
             val matchesGenre = filters.selectedGenre == null || anime.genres.contains(filters.selectedGenre)
@@ -364,9 +380,10 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
         currentStack.add(OverlayState.AnimeDetails(anime))
         _overlayStack.value = currentStack
         
-        // Auto-add to watch history when entering details screen
+        // Auto-add to watch history and refresh extension episodes on-demand when entering details screen
         viewModelScope.launch {
             repository.recordWatchProgress(anime.id, 0, "Details", 0, 0)
+            repository.refreshAnimeEpisodesOnDemand(anime.id)
         }
     }
 
@@ -383,6 +400,18 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     fun openPlayer(anime: Anime, episode: Episode, server: com.example.data.model.StreamServer? = null) {
         _activePlayerServer.value = server
         _activePlayerEpisode.value = Pair(anime, episode)
+        viewModelScope.launch {
+            repository.refreshEpisodeServersOnDemand(anime.id, episode.episodeNumber)
+            val updatedEpisodes = repository.getEpisodesForAnime(
+                anime,
+                enabledExtensions.value,
+                activeEpisodeSources.value
+            )
+            val refreshedEp = updatedEpisodes.find { it.episodeNumber == episode.episodeNumber }
+            if (refreshedEp != null && _activePlayerEpisode.value?.second?.episodeNumber == episode.episodeNumber) {
+                _activePlayerEpisode.value = Pair(anime, refreshedEp)
+            }
+        }
     }
 
     fun closePlayer() {
@@ -390,9 +419,13 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
         _activePlayerServer.value = null
     }
 
-    // Episodes list for current anime
-    fun getEpisodesForAnime(anime: Anime): List<Episode> {
-        return repository.getEpisodesForAnime(anime)
+    // Episodes list for current anime (merges active extension episodes & servers from Room DB reactively)
+    fun getEpisodesForAnime(
+        anime: Anime,
+        activeExtensions: List<AnimeExtensionEntity> = enabledExtensions.value,
+        activeDbSources: List<UnifiedEpisodeSourceEntity> = activeEpisodeSources.value
+    ): List<Episode> {
+        return repository.getEpisodesForAnime(anime, activeExtensions, activeDbSources)
     }
 
     // Saved Anime / Favorites Flow from Room DB
@@ -594,6 +627,202 @@ class AnimeViewModel(application: Application) : AndroidViewModel(application) {
     fun removeAnimeFromCustomList(listId: Long, animeId: String) {
         viewModelScope.launch {
             repository.removeAnimeFromCustomList(listId, animeId)
+        }
+    }
+
+    // --- Centralized Extension Repositories, Content Sync & Smart Deduplication ---
+    val extensionRepos: StateFlow<List<ExtensionRepoEntity>> = repository.extensionReposFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
+
+    val allExtensions: StateFlow<List<AnimeExtensionEntity>> = repository.allExtensionsFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
+
+    val enabledExtensions: StateFlow<List<AnimeExtensionEntity>> = repository.enabledExtensionsFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
+
+    val activeEpisodeSources: StateFlow<List<UnifiedEpisodeSourceEntity>> = repository.allActiveEpisodeSourcesFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
+
+    val extensionAnimeLinks: StateFlow<List<ExtensionAnimeLinkEntity>> = repository.extensionAnimeLinksFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
+
+    val extensionSyncStates: StateFlow<List<ExtensionSyncStateEntity>> = repository.extensionSyncStatesFlow.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyList()
+    )
+
+    private val _isImportingRepo = MutableStateFlow(false)
+    val isImportingRepo: StateFlow<Boolean> = _isImportingRepo.asStateFlow()
+
+    private val _verifyingExtensionId = MutableStateFlow<String?>(null)
+    val verifyingExtensionId: StateFlow<String?> = _verifyingExtensionId.asStateFlow()
+
+    private val _syncingExtensionId = MutableStateFlow<String?>(null)
+    val syncingExtensionId: StateFlow<String?> = _syncingExtensionId.asStateFlow()
+
+    fun importExtensionRepository(repoUrl: String, onResult: (Boolean, String) -> Unit) {
+        if (_isImportingRepo.value) return
+        viewModelScope.launch {
+            _isImportingRepo.value = true
+            val res = repository.importOrRefreshRepository(repoUrl)
+            _isImportingRepo.value = false
+            res.fold(
+                onSuccess = { bundle ->
+                    val total = bundle.extensions.size
+                    val compat = bundle.extensions.count { it.isCompatible && it.securityVerified }
+                    val msg = if (compat > 0) {
+                        val linkedNote = if (bundle.fetchedLinkedUrls.isNotEmpty()) {
+                            " • تم جلب ${bundle.fetchedLinkedUrls.size} ملفات قوائم مرتبطة"
+                        } else ""
+                        "تم استيراد \"${bundle.repo.name}\" بنجاح ($total إضافة، منها $compat متوافقة)$linkedNote • جميع الإضافات الجديدة معطلة افتراضياً"
+                    } else if (bundle.statusSummaryAr.isNotBlank()) {
+                        bundle.statusSummaryAr
+                    } else {
+                        "المستودع صالح لكن تشغيل الإضافات غير مدعوم ($total إضافة مستخرجة، 0 متوافقة)"
+                    }
+                    onResult(true, msg)
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "فشل استيراد المستودع")
+                }
+            )
+        }
+    }
+
+    fun refreshSingleRepository(repoUrl: String, onResult: (Boolean, String) -> Unit) {
+        if (_isImportingRepo.value) return
+        viewModelScope.launch {
+            _isImportingRepo.value = true
+            val res = repository.importOrRefreshRepository(repoUrl)
+            _isImportingRepo.value = false
+            res.fold(
+                onSuccess = { bundle ->
+                    onResult(
+                        true,
+                        "تم تحديث \"${bundle.repo.name}\" ومزامنة محتوى الإضافات المفعّلة مع الحفاظ على حالات التفعيل"
+                    )
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "تعذر تحديث المستودع")
+                }
+            )
+        }
+    }
+
+    fun refreshAllRepositories(onResult: (Boolean, String) -> Unit) {
+        if (_isImportingRepo.value) return
+        viewModelScope.launch {
+            _isImportingRepo.value = true
+            val res = repository.refreshAllRepositories()
+            _isImportingRepo.value = false
+            res.fold(
+                onSuccess = { count ->
+                    if (count > 0) {
+                        onResult(true, "تم تحديث $count مستودعات ومزامنة محتواها مع الحفاظ التام على حالات التفعيل")
+                    } else {
+                        onResult(false, "لا توجد مستودعات مضافة لتحديثها")
+                    }
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "حدث خطأ أثناء تحديث المستودعات")
+                }
+            )
+        }
+    }
+
+    fun toggleExtensionEnabled(
+        extensionId: String,
+        targetEnabled: Boolean,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            _syncingExtensionId.value = if (targetEnabled) extensionId else null
+            val res = repository.setExtensionEnabled(extensionId, targetEnabled)
+            _syncingExtensionId.value = null
+            res.fold(
+                onSuccess = { syncSummary ->
+                    val msg = if (targetEnabled) {
+                        if (syncSummary != null) {
+                            "تم تفعيل \"${syncSummary.extensionName}\" وجلب ${syncSummary.fetchedAnimeCount} أنمي عبر ${syncSummary.syncedPagesCount} صفحات " +
+                                "(منها ${syncSummary.deduplicatedMergedAnimeCount} مدمج ذكياً بدون تكرار) و ${syncSummary.syncedEpisodesCount} حلقة و ${syncSummary.syncedServersCount} سيرفر"
+                        } else {
+                            "تم تفعيل الإضافة ومزامنة محتواها بنجاح في مكتبة التطبيق"
+                        }
+                    } else {
+                        "تم تعطيل الإضافة وإيقاف مزامنتها مع الحفاظ على الأنميات المشتركة مع مصادر أخرى"
+                    }
+                    onResult(true, msg)
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "لا يمكن تفعيل هذه الإضافة")
+                }
+            )
+        }
+    }
+
+    fun syncSingleExtensionContent(
+        extensionId: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        if (_syncingExtensionId.value != null) return
+        viewModelScope.launch {
+            _syncingExtensionId.value = extensionId
+            val res = repository.syncExtensionContent(extensionId)
+            _syncingExtensionId.value = null
+            res.fold(
+                onSuccess = { s ->
+                    onResult(
+                        true,
+                        "تمت مزامنة \"${s.extensionName}\": ${s.fetchedAnimeCount} أنمي عبر ${s.syncedPagesCount} صفحات (${s.deduplicatedMergedAnimeCount} مدمج) • ${s.syncedEpisodesCount} حلقة • ${s.syncedServersCount} سيرفر"
+                    )
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "تعذر مزامنة محتوى الإضافة")
+                }
+            )
+        }
+    }
+
+    fun verifyExtensionCompatibility(
+        extensionId: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        if (_verifyingExtensionId.value != null) return
+        viewModelScope.launch {
+            _verifyingExtensionId.value = extensionId
+            val res = repository.verifyExtensionLiveAndPersist(extensionId)
+            _verifyingExtensionId.value = null
+            res.fold(
+                onSuccess = { report ->
+                    onResult(report.passed, report.reasonAr)
+                },
+                onFailure = { err ->
+                    onResult(false, err.message ?: "فشل فحص الإضافة")
+                }
+            )
+        }
+    }
+
+    fun deleteExtensionRepository(repoId: String, repoName: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            repository.deleteRepository(repoId)
+            onResult("تم حذف مستودع \"$repoName\" وجميع إضافاته من النظام")
         }
     }
 }

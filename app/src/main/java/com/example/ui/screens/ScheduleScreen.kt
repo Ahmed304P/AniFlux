@@ -181,11 +181,19 @@ fun ScheduleScreen(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = anime.titleAr,
+                                    text = anime.primaryTitle,
                                     color = MaterialTheme.colorScheme.onBackground,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
+                                if (anime.titleAr.isNotBlank() && anime.titleAr != anime.primaryTitle) {
+                                    Text(
+                                        text = anime.titleAr,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 12.sp,
+                                        maxLines = 1
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.height(4.dp))
 
